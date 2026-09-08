@@ -1,0 +1,482 @@
+syntax = "proto3";
+
+package Salus.Therapy;
+
+import "Common.proto";
+import "Protocol.proto";
+
+option cc_enable_arenas = true;
+
+// ===========================================================================
+// Therapy — the BlueBase Therapy execution + telemetry contract (edge-data-flow
+// §1, §2, §10, §14; edge-identity). This proto is the FROZEN boundary shared by
+// the Edge (BlueBase adapter + coordinator + durable Therapy outbox) and the
+// private Therapy service (acknowledged bidi ingest, ClickHouse committed-
+// watermark ledger, active-session registry, query + live fan-out).
+//
+// v0.7.1 freezes the field numbering for every message here; removed fields are
+// reserved and numbers are never reused (per-contract-row freeze rule). It
+// carries the already-frozen identity device fields verbatim from Common.proto
+// (edge-identity): therapy_session_id is GLOBALLY UNIQUE (UUIDv7/ULID),
+// device_chip_id keys the physical device, device_product_id resolves product
+// capability, and the WAP numeric session id survives only as a NON-KEY
+// diagnostic wap_session_id — there is no device_session_id in the cloud model.
+//
+// Two directions on one long-lived stream (§1), independent of Health on its own
+// (edge_id, stream_epoch): the Edge sends hello, ordered TherapyEvents, and
+// heartbeats upward; the service sends readiness, cumulative received/committed
+// watermarks, rejections, and errors downward. Delivery is at-least-once on the
+// wire, effectively-once in the dataset (§2): the Edge deletes an outbox row only
+// on a COMMITTED ack; replay always restarts from oldest_uncommitted_sequence.
+//
+// Therapy data is PROTOCOL + EXPOSURE, not health (§10). It never receives
+// wearable metrics — those go to Health — and it is the active-session
+// visibility authority (§14). The reconciliation DECISION is owned by Protocol
+// (Salus.Protocol.ReconciliationDecision, applied here idempotently); the
+// cloud-derived reconciliation_status/canonical_completion appear ONLY on the
+// stored/queried session surface, never on an Edge-originated TherapyEvent.
+//
+// client_id is bound at the service boundary from the validated JWT header,
+// never accepted as a payload field.
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// Closed catalogs (decision: prefer a typed enum over an open string). Every
+// enum reserves 0 as an explicit UNSPECIFIED so a missing value never silently
+// aliases a real one.
+// ---------------------------------------------------------------------------
+
+// The five WAP Therapy states (§ WAP-3-080). The BLE device state is
+// authoritative for actual device state; the Edge's intended state is retained
+// separately so disagreement is visible.
+enum TherapyState {
+    THERAPY_STATE_UNSPECIFIED = 0;
+    THERAPY_STATE_READY       = 1;
+    THERAPY_STATE_CONFIGURED  = 2;
+    THERAPY_STATE_PREPARATION = 3;
+    THERAPY_STATE_RUNNING     = 4;
+    THERAPY_STATE_STOPPED     = 5;
+}
+
+// The Therapy product kinds (WAP products). Mirrors the Protocol/Health product
+// set; Therapy owns its own copy for domain independence.
+enum ProductKind {
+    PRODUCT_KIND_UNSPECIFIED    = 0;
+    PRODUCT_KIND_HBOT           = 1;
+    PRODUCT_KIND_INFRARED_SAUNA = 2;
+    PRODUCT_KIND_RED_LIGHT      = 3;
+    PRODUCT_KIND_COLD_PLUNGE    = 4;
+}
+
+// A session-lifecycle transition (§10). The full observable lifecycle the Edge
+// reports as it drives a device through a routine.
+enum LifecycleKind {
+    LIFECYCLE_KIND_UNSPECIFIED = 0;
+    LIFECYCLE_SELECTED         = 1;
+    LIFECYCLE_CONFIGURED       = 2;
+    LIFECYCLE_STARTED          = 3;
+    LIFECYCLE_SKIPPED          = 4;
+    LIFECYCLE_CANCELLED        = 5;
+    LIFECYCLE_RUNNING          = 6;
+    LIFECYCLE_STOPPED          = 7;
+    LIFECYCLE_ENDED            = 8;
+    LIFECYCLE_CLEARED          = 9;
+    LIFECYCLE_SAFETY_STOP      = 10;  // local EdgeSafetyEngine-initiated stop (v0.7.4)
+}
+
+// The closed BLE feature/exposure catalog (§10, § WAP-2-021). Each feature has a
+// canonical FeatureUnit and a conservative range in the SalusTherapy catalog; an
+// unknown feature id is preserved as a rejected/raw diagnostic, never assigned
+// the wrong unit.
+enum FeatureKind {
+    FEATURE_KIND_UNSPECIFIED     = 0;
+    FEATURE_AMBIENT_TEMPERATURE  = 1;
+    FEATURE_CHAMBER_PRESSURE     = 2;
+    FEATURE_HUMIDITY             = 3;
+    FEATURE_CO2                  = 4;
+    FEATURE_NOISE                = 5;
+    FEATURE_TVOC                 = 6;
+    FEATURE_PARTICULATE_PM25     = 7;
+    FEATURE_O2                   = 8;
+    FEATURE_O3                   = 9;
+    FEATURE_HCHO                 = 10;
+    FEATURE_TARGET_TEMPERATURE   = 11;  // setpoint (sauna / cold plunge)
+    FEATURE_TARGET_PRESSURE      = 12;  // setpoint (HBOT)
+    FEATURE_RED_LIGHT_WAVELENGTH = 13;
+    FEATURE_RED_LIGHT_IRRADIANCE = 14;
+    FEATURE_DOOR_STATE           = 15;  // actuator/state
+    FEATURE_HEATER_STATE         = 16;
+    FEATURE_PUMP_STATE           = 17;
+    FEATURE_LAMP_STATE           = 18;
+}
+
+// Canonical feature units. The wire value is already in the feature's canonical
+// unit (the SalusTherapy catalog fixes exactly one per FeatureKind).
+enum FeatureUnit {
+    FEATURE_UNIT_UNSPECIFIED       = 0;
+    FEATURE_UNIT_CELSIUS           = 1;
+    FEATURE_UNIT_MILLI_ATA         = 2;   // milli-atmospheres absolute
+    FEATURE_UNIT_PERCENT           = 3;
+    FEATURE_UNIT_PPM               = 4;
+    FEATURE_UNIT_PPB               = 5;
+    FEATURE_UNIT_DECIBEL           = 6;
+    FEATURE_UNIT_MICROGRAM_PER_M3  = 7;
+    FEATURE_UNIT_NANOMETER         = 8;
+    FEATURE_UNIT_MILLIWATT_PER_CM2 = 9;
+    FEATURE_UNIT_STATE             = 10;  // dimensionless actuator state (0/1/enum)
+}
+
+// How the Edge obtained a Therapy metric (§10 automatic/recovered origin).
+enum MetricOrigin {
+    METRIC_ORIGIN_UNSPECIFIED = 0;
+    METRIC_ORIGIN_PROACTIVE   = 1;  // device-pushed proactive status/log (0x69/0x6B)
+    METRIC_ORIGIN_POLLED      = 2;  // Edge-polled Get (0x50)
+    METRIC_ORIGIN_LOG         = 3;  // from an indexed session-log record
+    METRIC_ORIGIN_RECOVERED   = 4;  // recovered via indexed Get Logs (0x6C/0x6D) after a gap
+}
+
+// Quality signal on a Therapy metric — a closed set carried as a repeated field.
+enum FeatureQuality {
+    FEATURE_QUALITY_UNSPECIFIED = 0;
+    FEATURE_QUALITY_STALE       = 1;  // exceeded max feature staleness
+    FEATURE_QUALITY_OUT_OF_RANGE = 2;
+    FEATURE_QUALITY_ESTIMATED   = 3;
+    FEATURE_QUALITY_RECOVERED   = 4;
+}
+
+// BLE link state to the physical device (§14).
+enum ConnectionState {
+    CONNECTION_STATE_UNSPECIFIED = 0;
+    CONNECTION_STATE_DISCONNECTED = 1;
+    CONNECTION_STATE_CONNECTING   = 2;
+    CONNECTION_STATE_CONNECTED    = 3;
+}
+
+// How the cloud disposed of a sequence the Edge must not keep retrying (§2).
+enum RejectionDisposition {
+    REJECT_UNSPECIFIED = 0;
+    REJECT_TRANSIENT   = 1;  // retryable (backpressure/temporary) — Edge replays
+    REJECT_TERMINAL    = 2;  // durable terminal rejection in the ledger — poison; do not retry
+}
+
+// ---------------------------------------------------------------------------
+// Service (§1, §14)
+// ---------------------------------------------------------------------------
+
+service Therapy {
+    // The one authoritative bidirectional session per Edge (§1). Implemented at
+    // v0.7.6 on the proven BidirectionalStreamCallData primitive.
+    rpc StreamTherapy(stream EdgeTherapyFrame) returns (stream CloudTherapyFrame);
+
+    // Private Protocol→Therapy handoff (§10, v0.7.7). Therapy applies the verdict
+    // to its OWN session rows (sets reconciliation_status/canonical_completion),
+    // idempotently by decision_id; Protocol never writes Therapy's store directly.
+    rpc ApplyReconciliationDecision(Salus.Protocol.ReconciliationDecision)
+        returns (ApplyReconciliationDecisionResponse);
+
+    // Active-session visibility authority (§14, v0.7.7).
+    rpc ListActiveTherapies(ListActiveTherapiesRequest)
+        returns (ListActiveTherapiesResponse);
+    rpc GetActiveTherapy(GetActiveTherapyRequest) returns (ActiveTherapy);
+    rpc SubscribeActiveTherapies(SubscribeActiveTherapiesRequest)
+        returns (stream ActiveTherapyUpdate);
+
+    // Presentation / ReBase live fan-out + bounded historical queries (§14, v0.7.7).
+    rpc SubscribeTherapyEvents(SubscribeTherapyEventsRequest)
+        returns (stream TherapyEvent);
+    rpc QueryTherapyMetrics(QueryTherapyMetricsRequest)
+        returns (QueryTherapyMetricsResponse);
+    rpc QueryTherapySessions(QueryTherapySessionsRequest)
+        returns (QueryTherapySessionsResponse);
+
+    rpc GetTherapyStats(Salus.Common.Empty) returns (TherapyStats);
+}
+
+// ---------------------------------------------------------------------------
+// Stream envelopes (§1) — mirror Health's, on Therapy's own sequence/epoch.
+// ---------------------------------------------------------------------------
+
+message EdgeTherapyFrame {
+    oneof payload {
+        StreamHello   hello     = 1;
+        TherapyEvent  event     = 2;
+        EdgeHeartbeat heartbeat = 3;
+    }
+}
+
+message CloudTherapyFrame {
+    oneof payload {
+        StreamReady ready = 1;
+        IngestAck   ack   = 2;
+        StreamError error = 3;
+    }
+}
+
+// Reconnect checkpoint — three explicit fields remove the "resume point"
+// ambiguity after a "received ack sent, committed ack lost" break (§2).
+message StreamHello {
+    string edge_id                     = 1;  // bound installation (BindEdgeInstallation)
+    string stream_epoch                = 2;
+    // The first sequence the Edge still holds uncommitted. REPLAY ALWAYS STARTS
+    // HERE — never from any received watermark.
+    uint64 oldest_uncommitted_sequence = 3;
+    // The next sequence the Edge will allocate to a new event (high-watermark+1).
+    uint64 next_sequence_to_allocate   = 4;
+    // The highest sequence the Edge has locally observed COMMITTED. Advisory.
+    uint64 local_committed_checkpoint  = 5;
+    string adapter_version             = 6;
+    string time_zone                   = 7;
+}
+
+message StreamReady {
+    uint64 received_through_sequence  = 1;
+    uint64 committed_through_sequence = 2;  // authoritative committed/deletion checkpoint
+    bool   schema_compatible          = 3;
+}
+
+message EdgeHeartbeat {
+    int64  sent_at_us                  = 1;
+    uint64 next_sequence_to_allocate   = 2;
+    uint64 oldest_uncommitted_sequence = 3;
+}
+
+message StreamError {
+    string code    = 1;  // closed code catalog (enforced service-side)
+    string message = 2;
+    bool   fatal   = 3;  // if true the Edge must reset the stream epoch
+}
+
+// How the cloud disposed of one sequence (§2).
+message EventRejection {
+    uint64 sequence                  = 1;
+    string event_id                  = 2;
+    RejectionDisposition disposition = 3;
+    string reason_code               = 4;  // closed catalog (SalusTherapy Code::)
+}
+
+message IngestAck {
+    uint64 received_through_sequence  = 1;
+    // Advances on a durable data row+ledger entry OR a durable TERMINAL rejection
+    // ledger entry — so one poison event can neither block later sequences nor be
+    // retried forever.
+    uint64 committed_through_sequence  = 2;
+    repeated EventRejection rejections = 3;
+}
+
+// ---------------------------------------------------------------------------
+// Domain events (§10). One TherapyEvent carries exactly one payload.
+// ---------------------------------------------------------------------------
+
+message TherapyEvent {
+    string event_id           = 1;
+    string stream_epoch       = 2;
+    uint64 sequence           = 3;
+    string therapy_session_id = 4;   // globally unique (UUIDv7/ULID)
+    uint32 wap_session_id     = 5;   // raw WAP BLE diagnostic only — NOT a cloud key/join
+    int64  observed_at_us     = 6;   // Edge WallClock receive time — authoritative (§3)
+    int64  source_timestamp_us = 7;  // device-provided timestamp — preserved, never substituted
+    uint32 schema_version     = 8;
+    // Execution lineage (§10, edge-identity §6) — lets downstream distinguish a
+    // confirmed protocol run from a not-yet-reconciled offline one before the
+    // cloud sets canonical state. Reconciliation state is NEVER carried here.
+    Salus.Protocol.ExecutionStartMode start_mode = 15;
+    string execution_claim_id = 16;  // online lease or local optimistic claim
+    string entitlement_id     = 17;  // set for offline-started runs
+    oneof payload {
+        TherapySession      session      = 10;
+        TherapyLifecycleEvent lifecycle  = 11;
+        TherapyMetric       metric       = 12;
+        TherapyDeviceState  device_state = 13;
+        ProtocolStep        protocol_step = 14;
+    }
+}
+
+// Session identity + configured plan + execution lineage (§10). The
+// reconciliation_status/canonical_completion fields are CLOUD-DERIVED (set only
+// by Therapy.ApplyReconciliationDecision) and appear only on the stored/queried
+// surface — an Edge-originated event leaves them UNSPECIFIED/false.
+message TherapySession {
+    string therapy_session_id  = 1;   // globally unique (UUIDv7/ULID)
+    string client_id           = 2;   // from JWT header at the boundary, not payload
+    string edge_id             = 3;   // attribution only (not a uniqueness key)
+    string device_chip_id      = 4;   // Nordic nRF52840 FICR.DEVICEID (hex) — physical device key
+    uint32 device_product_id   = 5;   // resolves product capability (products table)
+    ProductKind product        = 6;
+    string protocol_id         = 7;
+    string revision_id         = 8;   // the immutable ProtocolRevision executed
+    string assignment_id       = 9;
+    string routine_instance_id = 10;
+    uint32 day_number          = 11;
+    Salus.Protocol.TimeOfDay time_of_day = 12;
+    // Configured durations / device log plan (from Set Session).
+    uint32 preparation_seconds = 13;
+    uint32 running_seconds     = 14;
+    uint32 device_log_interval_seconds = 15;
+    repeated uint32 device_log_feature_ids = 16;
+    uint32 wap_session_id      = 17;  // non-key diagnostic
+    // Cloud-derived reconciliation (Therapy-set only; never on an Edge event).
+    Salus.Protocol.ExecutionStartMode start_mode = 18;
+    string execution_claim_id  = 19;
+    string entitlement_id      = 20;
+    Salus.Protocol.ReconciliationStatus reconciliation_status = 21;
+    bool   canonical_completion = 22;
+    int64  started_at_us       = 23;
+}
+
+message TherapyLifecycleEvent {
+    LifecycleKind kind           = 1;
+    TherapyState  intended_state = 2;  // Edge's intended device state
+    TherapyState  observed_state = 3;  // BLE-observed device state (authoritative)
+    int64         at_us          = 4;
+    string        note           = 5;
+}
+
+message TherapyMetric {
+    uint32       feature_id        = 1;   // raw BLE feature id
+    FeatureKind  feature_kind      = 2;   // resolved from the catalog (UNSPECIFIED if unknown)
+    FeatureUnit  unit              = 3;   // canonical unit (validated == catalog)
+    double       value             = 4;   // canonical value, already in `unit`
+    int64        device_timestamp_us = 5; // device clock — preserved separately
+    int64        observed_at_us    = 6;   // Edge WallClock — authoritative
+    uint32       device_log_index  = 7;   // monotonic device log index (0 = live/non-log)
+    MetricOrigin origin            = 8;
+    TherapyState phase             = 9;
+    repeated FeatureQuality quality_flags = 10;
+    int64        sample_tick_us    = 11;  // alignment key shared with the in-Therapy health sample
+    int32        raw_value         = 12;  // raw scaled integer as decoded off the wire (diagnostic)
+}
+
+message TherapyDeviceState {
+    string          device_chip_id   = 1;
+    uint32          device_product_id = 2;
+    bool            powered          = 3;
+    ConnectionState connection       = 4;
+    TherapyState    session_state    = 5;
+    uint32          session_elapsed_seconds = 6;
+    uint32          latest_log_index = 7;   // highest device log index observed
+    bool            owned_by_edge    = 8;   // this Edge holds device ownership
+    uint32          fault_code       = 9;   // 0 = no fault
+    repeated uint32 supported_feature_ids = 10;
+    int64           at_us            = 11;
+}
+
+// A planned time-indexed feature change applied during the session (§10) — the
+// compiled protocol step the Edge drove onto the device.
+message ProtocolStep {
+    uint32   day_number       = 1;
+    Salus.Protocol.TimeOfDay time_of_day = 2;
+    uint32   order_index      = 3;
+    Salus.Protocol.Modality  modality = 4;
+    uint32   feature_id       = 5;   // the device feature this step set
+    FeatureKind feature_kind  = 6;
+    double   target_value     = 7;
+    FeatureUnit unit          = 8;
+    int64    applied_at_us    = 9;
+}
+
+// ---------------------------------------------------------------------------
+// Active-session visibility (§14)
+// ---------------------------------------------------------------------------
+
+// A live view of an in-progress Therapy (§14) — reconstructed by the service.
+message ActiveTherapy {
+    string          therapy_session_id = 1;
+    string          client_id          = 2;
+    string          edge_id            = 3;
+    string          device_chip_id     = 4;
+    uint32          device_product_id  = 5;
+    ProductKind     product            = 6;
+    string          protocol_id        = 7;
+    string          revision_id        = 8;
+    TherapyState    phase              = 9;
+    uint32          elapsed_seconds    = 10;
+    uint32          remaining_seconds  = 11;
+    ConnectionState connection         = 12;
+    uint32          latest_log_index   = 13;
+    uint32          expected_log_index = 14;
+    uint32          missing_log_count  = 15;
+    int64           cloud_ack_lag_us   = 16;  // observed_at of latest event vs committed
+    int64           last_update_us     = 17;
+    repeated TherapyMetric latest_features = 18;  // latest environment readings
+}
+
+message ActiveTherapyUpdate {
+    ActiveTherapy active   = 1;
+    bool          ended    = 2;  // true when the session left the active set
+}
+
+// ---------------------------------------------------------------------------
+// Query + subscription surface (§14)
+// ---------------------------------------------------------------------------
+
+message ApplyReconciliationDecisionResponse {
+    bool applied        = 1;  // false only on a malformed/unknown-session decision
+    bool already_applied = 2; // idempotent replay by decision_id
+}
+
+message ListActiveTherapiesRequest {
+    string client_id = 1;  // operator scope; own-subject enforced at boundary
+}
+message ListActiveTherapiesResponse {
+    repeated ActiveTherapy active = 1;
+}
+
+message GetActiveTherapyRequest {
+    string therapy_session_id = 1;
+}
+
+message SubscribeActiveTherapiesRequest {
+    string client_id = 1;
+}
+
+message SubscribeTherapyEventsRequest {
+    string client_id          = 1;
+    string therapy_session_id = 2;  // optional filter
+    bool   include_sessions   = 3;
+    bool   include_lifecycle  = 4;
+    bool   include_metrics    = 5;
+    bool   include_device_state = 6;
+    bool   include_protocol_steps = 7;
+}
+
+message QueryTherapyMetricsRequest {
+    string client_id          = 1;
+    string therapy_session_id = 2;   // optional filter
+    repeated FeatureKind features = 3;  // empty = all
+    int64  start_us           = 4;   // bounded range required
+    int64  end_us             = 5;
+    uint32 max_rows           = 6;   // server imposes a hard maximum
+    string page_token         = 7;
+}
+message QueryTherapyMetricsResponse {
+    repeated TherapyMetric metrics = 1;
+    string next_page_token         = 2;
+    bool truncated                 = 3;
+}
+
+message QueryTherapySessionsRequest {
+    string client_id = 1;
+    int64  start_us  = 2;   // bounded range required (over started_at_us)
+    int64  end_us    = 3;
+    uint32 max_rows  = 4;
+    string page_token = 5;
+}
+message QueryTherapySessionsResponse {
+    repeated TherapySession sessions = 1;
+    string next_page_token           = 2;
+    bool truncated                   = 3;
+}
+
+message TherapyStats {
+    uint64 active_streams          = 1;
+    uint64 sessions_ingested       = 2;
+    uint64 metrics_ingested        = 3;
+    uint64 lifecycle_ingested      = 4;
+    uint64 device_states_ingested  = 5;
+    uint64 protocol_steps_ingested = 6;
+    uint64 events_rejected         = 7;
+    uint64 admission_rejections    = 8;
+    uint64 committed_through_total  = 9;
+    uint64 active_therapies        = 10;
+    uint64 subscriber_count        = 11;
+}

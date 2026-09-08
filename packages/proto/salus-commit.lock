@@ -1,0 +1,18 @@
+{
+  "salusSha": "2470b82",
+  "syncedAt": "2026-09-08T02:27:09.566Z",
+  "source": "salus/src/proto/Salus",
+  "note": "Vendored proto set. Test/ protos excluded — the console runs the harness rather than speaking its probes. CI runs sync-protos --check + buf breaking on every bump.",
+  "files": {
+    "Admin.proto": "6f5c0128d5b1b2a79f45523fc0a119178421f109e0377e037d05fad191fb3557",
+    "Authentication.proto": "aeb5b9a1456acb992d545b88404e73ab0c77e3e845d6e3f6c37cb60705ba11a1",
+    "Common.proto": "f9a44d996eea46756a76c3d13d6dd3cfcf17d7e9a480cb7a97b7f9dd7cac0813",
+    "EdgeApplication.proto": "60920a7485adf63df3fb54aeb53bdee782e4fe7dd1caaf5a0d4dd9161eb53290",
+    "EdgeControl.proto": "e65f2a3a265f056b1672124aa5573e066e3da9fdd8d42c769dbca83045a89f75",
+    "Health.proto": "0915a1b06fd04c8640893eda97ac46ce150e280cb6229bde10f321fb4f7f227d",
+    "Network.proto": "c585d0006660290b750100cba1e3e40c6561159b093b28f00169a9466f87e878",
+    "Protocol.proto": "1b7649b0e1f8faf1d85bcf2cfe9c423988a3dba29ad65a2c5436c03bb0d15910",
+    "Session.proto": "73378635ad86601d24852f79c533747272a58f2d3ca2c6d5d0bf2cdafe91b714",
+    "Therapy.proto": "8bf93306b145fcc337684fcf8035de3070c09dbe366d601136832be3f303ef9f"
+  }
+}

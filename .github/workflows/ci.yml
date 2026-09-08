@@ -4,28 +4,33 @@
 # surface area to make splitting it worthwhile. Split when build time or
 # flakiness isolation actually demands it.
 #
-# Step → gate mapping, as of v0.1.1:
+# Step → gate mapping, as of v0.1.2:
 #   plans-lint          → docs/plans/ register consistency (numbered ⟺ listed
 #                          in INDEX, Status lines, backlog freshness, no
 #                          dangling plan links). Stdlib-only Python, so it runs
 #                          BEFORE install — it needs nothing this workflow has
 #                          not already checked out.
+#   sync-protos:check   → vendored protos must match packages/proto/salus-commit.lock
+#                          (drift gate). Hashes the vendored files rather than
+#                          the source, so it needs no Salus checkout here.
+#   buf breaking        → wire-compat vs. the tracked baseline image
+#                          (packages/proto/.buf-image-prev.binpb). Blocking: a
+#                          Salus proto bump that breaks the wire fails here and
+#                          has to be reviewed. Regenerate the baseline only on
+#                          an intended bump, in the same commit.
 #   lint                → eslint + prettier --check
+#   typecheck           → tsc -b across every project reference
+#   test                → vitest across packages (and apps, from v0.1.5)
 #
-# Steps later stages add (each named in the plan's stage that owns it):
-#   v0.1.2  sync-protos:check (vendor drift vs. salus-commit.lock)
-#           gen               (buf generate — src/gen is NOT committed, so
-#                              everything after depends on this step; there is
-#                              no regenerate-and-diff gate because there is no
-#                              committed output to drift)
-#           buf breaking      (wire-compat vs. the tracked baseline image)
-#           typecheck         (tsc -b — joins here rather than at v0.1.1
-#                              because tsc refuses a solution with no project
-#                              references, and v0.1.1 has no TypeScript source)
-#   v0.1.6  check             (svelte-check — tsc does not read .svelte script
-#                              blocks; it joins CI when apps/web exists)
-#           test              (vitest across packages and apps)
-#           build             (packages → web → bridge)
+# `pnpm install` runs the proto package's postinstall (buf generate), so the
+# generated code exists before anything typechecks. src/gen is NOT committed:
+# it is fully determined by the drift-gated vendored sources plus the pinned
+# buf toolchain, so there is nothing to diff and no regenerate-and-diff gate.
+#
+# Steps later stages add:
+#   v0.1.6  check   (svelte-check — tsc does not read .svelte script blocks;
+#                    it joins CI when apps/web exists)
+#           build   (packages → web → bridge)
 
 name: CI
 
@@ -68,7 +73,21 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
+        # The proto package's postinstall runs `buf generate`, so src/gen
+        # exists from here on without a separate step.
         run: pnpm install --frozen-lockfile
+
+      - name: Proto drift gate (sync-protos --check)
+        run: pnpm sync-protos:check
+
+      - name: Wire-compatibility gate (buf breaking)
+        run: pnpm --filter @salus-gui/proto breaking
 
       - name: Lint (eslint + prettier --check)
         run: pnpm lint
+
+      - name: Typecheck (tsc -b)
+        run: pnpm typecheck
+
+      - name: Test (vitest)
+        run: pnpm test

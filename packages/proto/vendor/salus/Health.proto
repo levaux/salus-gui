@@ -1,0 +1,504 @@
+syntax = "proto3";
+
+package Salus.Health;
+
+import "Common.proto";
+
+option cc_enable_arenas = true;
+
+// ===========================================================================
+// Health — the configurable Health data plane contract (edge-data-flow.md
+// §2, §4-§8, §13). This proto is the FROZEN boundary shared by the Edge
+// (deterministic HealthKit-equivalent source + aggregation + durable outbox)
+// and the private Health service (acknowledged bidi ingest, ClickHouse
+// committed-watermark ledger, query + live fan-out).
+//
+// v0.6.1 freezes the field numbering for every message here; removed fields
+// are reserved and numbers are never reused (per-contract-row freeze rule).
+//
+// Two directions on one long-lived stream (§1): the Edge sends hello, ordered
+// HealthEvents, and heartbeats upward; the service sends readiness, cumulative
+// received/committed watermarks, rejections, and errors downward. Delivery is
+// at-least-once on the wire, effectively-once in the dataset (§2): the Edge
+// deletes an outbox row only on a COMMITTED ack; replay always restarts from
+// oldest_uncommitted_sequence, never from the received watermark.
+//
+// The metric/unit/aggregation catalog is a set of CLOSED enums (§4): an unknown
+// metric is rejected, never stored under a free-text name. The durable,
+// versioned EdgeConfiguration (§8) — whose profile contracts are frozen here so
+// the v0.8 EdgeControl.proto reuses them verbatim — selects which metrics and
+// aggregates run and at what cadence, so a data-rate change is a configuration
+// rollout, not a binary release.
+//
+// Identity fields (client_id, edge_id, wearable_id, therapy_session_id) follow
+// the frozen tuple documented in Common.proto. client_id is bound at the
+// service boundary from the validated JWT header, never accepted as a payload.
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// Closed catalogs (decision: prefer a typed enum over an open string). Every
+// enum reserves 0 as an explicit UNSPECIFIED so a missing value never silently
+// aliases a real one.
+// ---------------------------------------------------------------------------
+
+// The normalized metric catalog (§4). Adding a metric is a proto/catalog change
+// plus tests, never a free-text name.
+enum HealthMetricKind {
+    HEALTH_METRIC_UNSPECIFIED        = 0;
+    HEALTH_METRIC_HEART_RATE         = 1;
+    HEALTH_METRIC_RESTING_HEART_RATE = 2;
+    HEALTH_METRIC_HRV_SDNN           = 3;
+    HEALTH_METRIC_BLOOD_OXYGEN       = 4;
+    HEALTH_METRIC_RESPIRATORY_RATE   = 5;
+    HEALTH_METRIC_BODY_TEMPERATURE   = 6;
+    HEALTH_METRIC_ACTIVE_ENERGY      = 7;
+    HEALTH_METRIC_STEPS              = 8;
+    HEALTH_METRIC_SLEEP_DURATION     = 9;
+    HEALTH_METRIC_EXERCISE_DURATION  = 10;
+}
+
+// Canonical units (§4). Each metric fixes exactly one canonical unit in the
+// SalusHealth catalog; the wire value is always already in that unit.
+enum MetricUnit {
+    METRIC_UNIT_UNSPECIFIED     = 0;
+    METRIC_UNIT_BEATS_PER_MIN   = 1;
+    METRIC_UNIT_MILLISECONDS    = 2;
+    METRIC_UNIT_PERCENT         = 3;
+    METRIC_UNIT_BREATHS_PER_MIN = 4;
+    METRIC_UNIT_CELSIUS         = 5;
+    METRIC_UNIT_KILOJOULES      = 6;
+    METRIC_UNIT_COUNT           = 7;
+    METRIC_UNIT_SECONDS         = 8;
+}
+
+// The closed aggregate set (§8). A remote configuration cannot invent an
+// unimplemented computation.
+enum AggregateKind {
+    AGGREGATE_UNSPECIFIED       = 0;
+    AGGREGATE_COUNT             = 1;
+    AGGREGATE_SUM               = 2;
+    AGGREGATE_MIN               = 3;
+    AGGREGATE_MAX               = 4;
+    AGGREGATE_MEAN              = 5;
+    AGGREGATE_LATEST            = 6;
+    AGGREGATE_STDDEV            = 7;
+    AGGREGATE_PERCENTILE        = 8;
+    AGGREGATE_DURATION_IN_STATE = 9;
+    AGGREGATE_SAMPLE_QUALITY    = 10;
+}
+
+// A summary is a local-hour or local-calendar-day bucket (§3), never a rolling
+// 24-hour period.
+enum SummaryKind {
+    SUMMARY_KIND_UNSPECIFIED = 0;
+    SUMMARY_KIND_HOURLY      = 1;
+    SUMMARY_KIND_DAILY       = 2;
+}
+
+// How an out-of-Therapy bucket boundary is aligned (§8).
+enum BucketAlignment {
+    BUCKET_ALIGNMENT_UNSPECIFIED  = 0;
+    BUCKET_ALIGNMENT_LOCAL_HOUR   = 1;
+    BUCKET_ALIGNMENT_LOCAL_DAY    = 2;
+    BUCKET_ALIGNMENT_FIXED_WINDOW = 3;
+}
+
+// Missing-data policy (§8) — a Health value is never fabricated.
+enum MissingDataPolicy {
+    MISSING_DATA_UNSPECIFIED     = 0;
+    MISSING_DATA_MARK_INCOMPLETE = 1;
+}
+
+// Upload priority for the durable outbox drain order (§8).
+enum UploadPriority {
+    UPLOAD_PRIORITY_UNSPECIFIED = 0;
+    UPLOAD_PRIORITY_LOW         = 1;
+    UPLOAD_PRIORITY_NORMAL      = 2;
+    UPLOAD_PRIORITY_HIGH        = 3;
+}
+
+// Provenance of a raw sample (§4 source_kind).
+enum SourceKind {
+    SOURCE_KIND_UNSPECIFIED = 0;
+    SOURCE_KIND_WEARABLE    = 1;
+    SOURCE_KIND_PHONE       = 2;
+    SOURCE_KIND_MANUAL      = 3;
+    SOURCE_KIND_SIMULATOR   = 4;
+}
+
+// Sample quality signals (§4 quality_flags) — a closed set carried as a
+// repeated field rather than an opaque bitmask.
+enum QualityFlag {
+    QUALITY_FLAG_UNSPECIFIED     = 0;
+    QUALITY_FLAG_ESTIMATED       = 1;
+    QUALITY_FLAG_MOTION_ARTIFACT = 2;
+    QUALITY_FLAG_LOW_CONFIDENCE  = 3;
+    QUALITY_FLAG_OUT_OF_RANGE    = 4;
+    QUALITY_FLAG_RECOVERED       = 5;
+}
+
+// Therapy phase drives Health cadence (§5). The BLE device state is
+// authoritative for actual device state; the Edge's intended state is retained
+// separately so disagreement is visible.
+enum TherapyPhase {
+    THERAPY_PHASE_UNSPECIFIED = 0;
+    THERAPY_PHASE_READY       = 1;
+    THERAPY_PHASE_CONFIGURED  = 2;
+    THERAPY_PHASE_PREPARATION = 3;
+    THERAPY_PHASE_RUNNING     = 4;
+    THERAPY_PHASE_STOPPED     = 5;
+}
+
+// How the Edge acquires an in-Therapy exposure feature (§8).
+enum FeatureAcquisition {
+    FEATURE_ACQUISITION_UNSPECIFIED         = 0;
+    FEATURE_ACQUISITION_PROACTIVE_PREFERRED = 1;
+    FEATURE_ACQUISITION_POLL                = 2;
+    FEATURE_ACQUISITION_LOG                 = 3;
+}
+
+// Therapy product kinds an in-Therapy profile may apply to (§8, WAP products).
+enum ProductKind {
+    PRODUCT_KIND_UNSPECIFIED    = 0;
+    PRODUCT_KIND_HBOT           = 1;
+    PRODUCT_KIND_INFRARED_SAUNA = 2;
+    PRODUCT_KIND_RED_LIGHT      = 3;
+    PRODUCT_KIND_COLD_PLUNGE    = 4;
+}
+
+// How the cloud disposed of a sequence the Edge must not keep retrying (§2).
+enum RejectionDisposition {
+    REJECT_UNSPECIFIED = 0;
+    REJECT_TRANSIENT   = 1;  // retryable (backpressure/temporary) — Edge replays
+    REJECT_TERMINAL    = 2;  // durable terminal rejection in the ledger — poison; do not retry
+}
+
+// A comparator for a safety threshold rule (§12).
+enum Comparator {
+    COMPARATOR_UNSPECIFIED = 0;
+    COMPARATOR_LESS_THAN   = 1;
+    COMPARATOR_GREATER_THAN = 2;
+    COMPARATOR_LESS_OR_EQUAL    = 3;
+    COMPARATOR_GREATER_OR_EQUAL = 4;
+}
+
+// ---------------------------------------------------------------------------
+// Service
+// ---------------------------------------------------------------------------
+
+service Health {
+    // The one authoritative bidirectional session per Edge (§1). Implemented at
+    // v0.6.4 on the proven BidirectionalStreamCallData primitive.
+    rpc StreamHealth(stream EdgeHealthFrame) returns (stream CloudHealthFrame);
+
+    // Live committed-event fan-out for presentation/notification/ReBase
+    // consumers (§13). Implemented at v0.6.6.
+    rpc SubscribeHealthEvents(SubscribeHealthEventsRequest)
+        returns (stream HealthEvent);
+
+    // Bounded historical queries (§13). Implemented at v0.6.6.
+    rpc QueryHealthSamples(QueryHealthSamplesRequest)
+        returns (QueryHealthSamplesResponse);
+    rpc QueryHealthSummaries(QueryHealthSummariesRequest)
+        returns (QueryHealthSummariesResponse);
+
+    rpc GetHealthStats(Salus.Common.Empty) returns (HealthStats);
+}
+
+// ---------------------------------------------------------------------------
+// Stream envelopes (§1)
+// ---------------------------------------------------------------------------
+
+message EdgeHealthFrame {
+    oneof payload {
+        StreamHello hello       = 1;
+        HealthEvent event       = 2;
+        EdgeHeartbeat heartbeat = 3;
+    }
+}
+
+message CloudHealthFrame {
+    oneof payload {
+        StreamReady ready = 1;
+        IngestAck   ack   = 2;
+        StreamError error = 3;
+    }
+}
+
+message HealthEvent {
+    string event_id     = 1;
+    string stream_epoch = 2;
+    uint64 sequence     = 3;
+    uint32 schema_version = 4;
+    int64  created_at_us  = 5;
+    oneof payload {
+        HealthSample  sample  = 10;
+        HealthSummary summary = 11;
+    }
+}
+
+// Reconnect checkpoint — three explicit fields remove the "resume point"
+// ambiguity after a "received ack sent, committed ack lost" break (§2).
+message StreamHello {
+    string edge_id                     = 1;  // bound installation (BindEdgeInstallation)
+    string stream_epoch                = 2;
+    // The first sequence the Edge still holds uncommitted. REPLAY ALWAYS STARTS
+    // HERE — never from any received watermark.
+    uint64 oldest_uncommitted_sequence = 3;
+    // The next sequence the Edge will allocate to a new event (high-watermark+1).
+    uint64 next_sequence_to_allocate   = 4;
+    // The highest sequence the Edge has locally observed COMMITTED (data+ledger
+    // or terminal rejection). Advisory cross-check against the cloud's mark.
+    uint64 local_committed_checkpoint  = 5;
+    string adapter_version             = 6;
+    string time_zone                   = 7;
+    uint64 active_config_revision      = 8;
+}
+
+message StreamReady {
+    uint64 received_through_sequence  = 1;
+    uint64 committed_through_sequence = 2;  // authoritative committed/deletion checkpoint
+    bool   schema_compatible          = 3;
+    bool   config_compatible          = 4;
+}
+
+message EdgeHeartbeat {
+    int64  sent_at_us                  = 1;
+    uint64 next_sequence_to_allocate   = 2;
+    uint64 oldest_uncommitted_sequence = 3;
+}
+
+message StreamError {
+    string code    = 1;  // closed code catalog (enforced service-side)
+    string message = 2;
+    bool   fatal   = 3;  // if true the Edge must reset the stream epoch
+}
+
+// How the cloud disposed of one sequence (§2).
+message EventRejection {
+    uint64 sequence                  = 1;
+    string event_id                  = 2;
+    RejectionDisposition disposition = 3;
+    string reason_code               = 4;  // closed catalog
+}
+
+message IngestAck {
+    uint64 received_through_sequence  = 1;
+    // Advances on a durable data row+ledger entry OR a durable TERMINAL
+    // rejection ledger entry — so one poison event can neither block later
+    // sequences nor be retried forever.
+    uint64 committed_through_sequence  = 2;
+    repeated EventRejection rejections = 3;
+}
+
+// ---------------------------------------------------------------------------
+// Domain events (§4)
+// ---------------------------------------------------------------------------
+
+message HealthSample {
+    HealthMetricKind metric = 1;
+    double value            = 2;  // canonical numeric value, already in `unit`
+    MetricUnit unit         = 3;  // canonical unit (validated == catalog)
+    int64 observed_start_us = 4;  // Edge Unix-epoch UTC micros — authoritative (§3)
+    int64 observed_end_us   = 5;
+    SourceKind source_kind  = 6;
+    string source_bundle    = 7;  // producing app bundle id
+    string source_device    = 8;  // human-readable device string
+    string wearable_id      = 9;  // frozen identity — resolved from HKDevice/Health Connect when known
+    repeated QualityFlag quality_flags = 10;
+    // In-Therapy correlation — present only while a Therapy is
+    // PREPARATION/RUNNING (§5).
+    string therapy_session_id    = 11;  // globally unique (UUIDv7/ULID)
+    TherapyPhase phase           = 12;
+    int64 sample_tick_us         = 13;  // alignment key shared with the exposure snapshot
+    uint64 sampling_policy_revision = 14;  // config revision that produced this sample
+}
+
+message HealthSummary {
+    SummaryKind kind        = 1;
+    HealthMetricKind metric = 2;
+    MetricUnit unit         = 3;
+    // Bucket identity (§3) — carries enough to make DST/travel transitions
+    // auditable.
+    int64 bucket_start_us      = 4;  // UTC
+    int64 bucket_end_us        = 5;  // UTC
+    string time_zone           = 6;  // IANA tz used by the Edge
+    int32 utc_offset_seconds   = 7;  // offset at bucket start
+    string local_label         = 8;  // local date (DAILY) or date+hour (HOURLY)
+    uint64 sample_count        = 9;
+    bool complete              = 10; // met minimum coverage/count
+    // Aggregate values with explicit presence — an absent aggregate is a
+    // missing value, never a fabricated 0 (§8 MARK_INCOMPLETE).
+    optional double min    = 11;
+    optional double max    = 12;
+    optional double mean   = 13;
+    optional double sum    = 14;
+    optional double latest = 15;
+    optional double stddev = 16;
+    // Provenance (§4): a summary carries the source SET, not one wearable_id.
+    string source_set_hash = 17;
+    repeated string source_ids = 18;
+    bool mixed_sources     = 19;
+    uint64 sampling_policy_revision = 20;
+    MissingDataPolicy missing_data_policy = 21;
+    // True when the Edge closed this bucket early because the active config
+    // revision changed mid-bucket (§ "Configuration activation is explicit").
+    bool closed_by_config_change = 22;
+}
+
+// ---------------------------------------------------------------------------
+// Query + subscription surface (§13)
+// ---------------------------------------------------------------------------
+
+message SubscribeHealthEventsRequest {
+    string client_id                   = 1;  // operator scope; own-subject enforced at boundary
+    repeated HealthMetricKind metrics  = 2;  // empty = all
+    bool include_samples               = 3;
+    bool include_summaries             = 4;
+    string therapy_session_id          = 5;  // optional filter
+}
+
+message QueryHealthSamplesRequest {
+    string client_id                  = 1;
+    repeated HealthMetricKind metrics = 2;
+    int64 start_us                    = 3;  // bounded range required
+    int64 end_us                      = 4;
+    string therapy_session_id         = 5;  // optional filter
+    uint32 max_rows                   = 6;  // server imposes a hard maximum
+    string page_token                 = 7;
+}
+
+message QueryHealthSamplesResponse {
+    repeated HealthSample samples = 1;
+    string next_page_token        = 2;
+    bool truncated                = 3;
+}
+
+message QueryHealthSummariesRequest {
+    string client_id                  = 1;
+    repeated HealthMetricKind metrics = 2;
+    SummaryKind kind                  = 3;
+    int64 start_us                    = 4;  // bounded range required
+    int64 end_us                      = 5;
+    uint32 max_rows                   = 6;
+    string page_token                 = 7;
+}
+
+message QueryHealthSummariesResponse {
+    repeated HealthSummary summaries = 1;
+    string next_page_token           = 2;
+    bool truncated                   = 3;
+}
+
+message HealthStats {
+    uint64 active_streams          = 1;
+    uint64 samples_ingested        = 2;
+    uint64 summaries_ingested      = 3;
+    uint64 events_rejected         = 4;
+    uint64 admission_rejections    = 5;
+    uint64 committed_through_total = 6;
+    uint64 subscriber_count        = 7;
+}
+
+// ---------------------------------------------------------------------------
+// Durable, versioned configuration (§8). The profile contracts are FROZEN here
+// at v0.6.1; the v0.8 EdgeControl.proto imports and reuses them rather than
+// redefining them. In v0.6.x a local/test ConfigurationSource produces a signed
+// EdgeConfiguration snapshot; remote desired-state delivery is added at v0.8
+// without changing this contract.
+// ---------------------------------------------------------------------------
+
+message AggregatePlan {
+    AggregateKind kind      = 1;
+    int64 window_us         = 2;
+    int64 emit_interval_us  = 3;
+    optional double percentile = 4;  // required iff kind == AGGREGATE_PERCENTILE
+}
+
+message MetricPlan {
+    HealthMetricKind metric       = 1;
+    int64 source_query_interval_us = 2;
+    repeated AggregatePlan aggregates = 3;
+    uint32 minimum_sample_count   = 4;
+    double minimum_coverage_ratio = 5;
+    bool retain_raw_locally       = 6;
+    UploadPriority upload_priority = 7;
+}
+
+message RetentionPolicy {
+    int64 local_retention_us = 1;  // never age-deletes uncommitted rows (§ WAP-3-080)
+    bool retain_raw_samples  = 2;
+}
+
+message OutOfTherapyProfile {
+    repeated MetricPlan metrics = 1;
+    BucketAlignment alignment   = 2;  // LOCAL_HOUR or LOCAL_DAY
+    int64 source_lookback_us    = 3;
+    MissingDataPolicy missing_data = 4;
+    RetentionPolicy retention   = 5;
+}
+
+message TherapyFeaturePlan {
+    uint32 feature_id                 = 1;
+    FeatureAcquisition acquisition    = 2;
+    int64 poll_interval_us            = 3;
+    repeated AggregatePlan aggregates = 4;
+    bool required_for_session_log     = 5;
+}
+
+message InTherapyProfile {
+    repeated MetricPlan health_metrics = 1;
+    int64 health_sample_interval_us    = 2;  // default 60s; bounds 5s..1h (§7)
+    repeated TherapyFeaturePlan therapy_features = 3;
+    int64 exposure_snapshot_interval_us = 4;
+    int64 maximum_feature_staleness_us  = 5;
+    repeated ProductKind products       = 6;
+    repeated TherapyPhase phases        = 7;
+}
+
+message TherapySessionDefaults {
+    int64 device_log_interval_us       = 1;
+    repeated uint32 device_log_feature_ids = 2;
+    bool request_proactive_status      = 3;
+    bool request_proactive_logs        = 4;
+}
+
+message TherapyCaptureProfile {
+    TherapySessionDefaults session_defaults = 1;
+    repeated TherapyFeaturePlan edge_observation_features = 2;
+    bool permit_live_session_log_changes    = 3;
+}
+
+// A local safety threshold rule (§12) — evaluated on each in-Therapy sample and
+// rolling aggregate. The full cloud-assisted safety plane lands at v0.8; this
+// contract is frozen now so the durable EdgeConfiguration envelope is complete.
+message SafetyRule {
+    HealthMetricKind metric = 1;
+    Comparator comparator   = 2;
+    double threshold        = 3;
+    int64 window_us         = 4;
+    uint32 minimum_samples  = 5;
+}
+
+message SafetyPolicy {
+    string policy_id           = 1;
+    uint64 revision            = 2;
+    repeated SafetyRule rules  = 3;
+}
+
+// The durable, signed, versioned snapshot (§8). Activation is atomic across all
+// profiles; every generated event records the applied revision.
+message EdgeConfiguration {
+    string configuration_id = 1;
+    uint64 revision         = 2;
+    uint64 base_revision    = 3;
+    int64 issued_at_us      = 4;
+    int64 not_before_us     = 5;
+    bytes payload_hash      = 6;
+    OutOfTherapyProfile hourly     = 10;
+    OutOfTherapyProfile daily      = 11;
+    InTherapyProfile in_therapy    = 12;
+    TherapyCaptureProfile therapy_capture = 13;
+    SafetyPolicy safety            = 14;
+    bytes signature         = 20;
+}

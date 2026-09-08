@@ -1,0 +1,182 @@
+syntax = "proto3";
+
+package Salus.Admin;
+
+import "Common.proto";
+
+option cc_enable_arenas = true;
+
+// ===========================================================================
+// Admin Service — common administration interface for all Salus components
+//
+// Registered automatically by the Component base class. Every derived
+// service exposes these RPCs without additional work.
+// ===========================================================================
+service Admin {
+    // Liveness: is the process responsive?
+    rpc Ping(Salus.Common.Empty) returns (PingResponse);
+
+    // Current status of the component
+    rpc GetStatus(Salus.Common.Empty) returns (StatusResponse);
+
+    // Runtime metrics (pool utilisation, RPC throughput, queue depth)
+    rpc GetMetrics(Salus.Common.Empty) returns (MetricsResponse);
+
+    // Return the running configuration as an opaque string
+    rpc GetConfig(GetConfigRequest) returns (GetConfigResponse);
+
+    // Begin graceful drain: stop accepting new RPCs, finish in-flight work
+    rpc Drain(DrainRequest) returns (DrainResponse);
+
+    // Trigger a profiling snapshot
+    rpc GetProfile(GetProfileRequest) returns (GetProfileResponse);
+
+    // Initiate a graceful shutdown
+    rpc Shutdown(Salus.Common.Empty) returns (ShutdownResponse);
+
+    // Enable or disable trace-level logging at runtime
+    rpc SetTrace(SetLogLevelRequest) returns (SetLogLevelResponse);
+
+    // Enable or disable debug-level logging at runtime
+    rpc SetDebug(SetLogLevelRequest) returns (SetLogLevelResponse);
+
+    // Server-streaming log output — broadcast style, missed logs on reconnect are expected
+    // Subscribed to by the Network service for centralised log aggregation
+    rpc StreamLogs(Salus.Common.Empty) returns (stream LogEntry);
+}
+
+// ---------------------------------------------------------------------------
+// Ping
+// ---------------------------------------------------------------------------
+message PingResponse {
+    double uptime_seconds = 1;
+}
+
+// ---------------------------------------------------------------------------
+// GetStatus
+// ---------------------------------------------------------------------------
+message StatusResponse {
+    string                      service_name    = 1;
+    Salus.Common.ServiceStatus   status          = 2;
+    Salus.Common.Timestamp       started_at      = 3;
+    int64                       uptime_seconds  = 4;
+    string                      listen_address  = 5;
+    int32                       listen_port     = 6;
+}
+
+// ---------------------------------------------------------------------------
+// GetMetrics
+// ---------------------------------------------------------------------------
+message MetricsResponse {
+    int32   thread_pool_size        = 1;
+    int32   active_channels         = 2;
+    int64   rpc_count               = 3; // total RPCs handled since startup
+    int32   rpc_active              = 4; // currently in-flight RPCs
+    int32   queue_depth             = 5; // pending tasks in the thread pool
+}
+
+// ---------------------------------------------------------------------------
+// GetConfig
+// ---------------------------------------------------------------------------
+message GetConfigRequest {
+    bool redact_secrets = 1;
+}
+
+message GetConfigResponse {
+    string format   = 1;
+    string payload  = 2;
+}
+
+// ---------------------------------------------------------------------------
+// Drain
+// ---------------------------------------------------------------------------
+message DrainRequest {
+    uint32 deadline_seconds = 1;
+}
+
+message DrainResponse {
+    bool    accepted        = 1;
+    uint32  in_flight_rpcs  = 2;
+    string  detail          = 3;
+}
+
+// ---------------------------------------------------------------------------
+// GetProfile
+// ---------------------------------------------------------------------------
+enum ProfileType {
+    PROFILE_TYPE_UNSPECIFIED = 0;
+    PROFILE_TYPE_CPU         = 1;
+    PROFILE_TYPE_HEAP        = 2;
+    PROFILE_TYPE_CONTENTION  = 3;
+    PROFILE_TYPE_THREAD_DUMP = 4;
+}
+
+message GetProfileRequest {
+    ProfileType type              = 1;
+    uint32      duration_seconds  = 2;
+}
+
+message GetProfileResponse {
+    string format   = 1;
+    bytes  payload  = 2;
+}
+
+// ---------------------------------------------------------------------------
+// Shutdown
+// ---------------------------------------------------------------------------
+message ShutdownResponse {
+    bool    accepted    = 1;
+    string  message     = 2;
+}
+
+// ---------------------------------------------------------------------------
+// SetTrace / SetDebug
+// ---------------------------------------------------------------------------
+message SetLogLevelRequest {
+    bool enabled = 1;
+}
+
+message SetLogLevelResponse {
+    bool enabled = 1;
+}
+
+// ---------------------------------------------------------------------------
+// StreamLogs
+//
+// Structured form — the producing service emits each log line as separate
+// fields rather than a pre-formatted "[level] tag: msg" string. This lets
+// the Network forwarder enrich (service_name, admin_address) without
+// re-parsing, and lets dashboards filter by level / label and re-apply
+// their own colour palette. ANSI escape codes never appear on the wire.
+// ---------------------------------------------------------------------------
+enum LogLevel {
+    LOG_LEVEL_UNSPECIFIED = 0;
+    LOG_LEVEL_TRACE       = 1;
+    LOG_LEVEL_DEBUG       = 2;
+    LOG_LEVEL_INFO        = 3;
+    LOG_LEVEL_WARN        = 4;
+    LOG_LEVEL_ALARM       = 5;
+    LOG_LEVEL_ERROR       = 6;
+    LOG_LEVEL_FATAL       = 7;
+    LOG_LEVEL_TEST        = 8;
+}
+
+message LogEntry {
+    int64       timestamp_us = 1;   // WallClock µs since Unix epoch (UTC)
+    LogLevel    level        = 2;
+    string      label        = 3;   // e.g. "Network" or "Network|AdminService"
+    string      message      = 4;   // body only — no level/label prefix
+    uint64      seq          = 5;   // per-process monotonic line sequence.
+                                    // A collector tracks the max seq it has
+                                    // received and, on reconnect, sends it
+                                    // back via the "salus-log-since-seq"
+                                    // metadata key so the producer replays
+                                    // only seq > since (no duplicate lines
+                                    // from the in-memory startup ring).
+}
+
+// NOTE: Network telemetry (RpcKind, NetworkChannelStats, NetworkStatsResponse,
+// GetNetworkStats / SetNetworkMonitor RPCs) was removed when
+// per-Component telemetry moved to the central Network service. See
+// Network.proto for the replacement RPCs and docs/plans/network-monitor.md
+// for the design.

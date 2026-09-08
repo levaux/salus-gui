@@ -1,0 +1,14 @@
+version: v2
+clean: true
+plugins:
+  # protoc-gen-es v2 — schema objects + service descriptors (target=ts).
+  # One artifact, three consumers: the browser's Connect clients, the bridge's
+  # forwarding router (which walks these descriptors to decide unary vs stream),
+  # and the mock-salus handlers.
+  - local: protoc-gen-es
+    out: src/gen
+    opt:
+      - target=ts
+      - import_extension=js
+inputs:
+  - directory: vendor/salus

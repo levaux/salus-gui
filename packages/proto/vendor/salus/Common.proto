@@ -1,0 +1,198 @@
+syntax = "proto3";
+
+package Salus.Common;
+
+option cc_enable_arenas = true;
+
+// ---------------------------------------------------------------------------
+// Symbol — universal security identifier used across all Salus services
+// ---------------------------------------------------------------------------
+message Symbol {
+    string ticker           = 1;    // e.g. "AAPL", "EURUSD", "ESZ4"
+    string market           = 2;    // e.g. "USA", "SMART", "GLOBEX"
+    SecurityType sec_type   = 3;
+    string currency         = 4;    // denomination currency, e.g. "USD"
+    string exchange         = 5;    // primary exchange
+}
+
+enum SecurityType {
+    SECURITY_TYPE_UNKNOWN   = 0;
+    SECURITY_TYPE_EQUITY    = 1;
+    SECURITY_TYPE_OPTION    = 2;
+    SECURITY_TYPE_FUTURE    = 3;
+    SECURITY_TYPE_FOREX     = 4;
+    SECURITY_TYPE_CRYPTO    = 5;
+    SECURITY_TYPE_CFD       = 6;
+    SECURITY_TYPE_INDEX     = 7;
+}
+
+// ---------------------------------------------------------------------------
+// Timestamp — nanosecond-precision UTC time
+// ---------------------------------------------------------------------------
+message Timestamp {
+    int64 seconds   = 1;    // seconds since Unix epoch
+    int32 nanos     = 2;    // nanosecond offset within the second
+}
+
+// ---------------------------------------------------------------------------
+// TimeRange — a [start, end] window. The shared vocabulary type; services
+// that already carry their own (e.g. Salus.Store.TimeRange) are candidates to
+// converge here over time.
+// ---------------------------------------------------------------------------
+message TimeRange {
+    Timestamp start = 1;
+    Timestamp end   = 2;
+}
+
+// ---------------------------------------------------------------------------
+// Decimal — fixed-precision decimal for financial values (avoids float)
+// ---------------------------------------------------------------------------
+message Decimal {
+    int64 unscaled  = 1;    // value = unscaled * 10^(-scale)
+    int32 scale     = 2;    // number of decimal places
+}
+
+// ---------------------------------------------------------------------------
+// OrderSide
+// ---------------------------------------------------------------------------
+enum OrderSide {
+    ORDER_SIDE_UNKNOWN  = 0;
+    ORDER_SIDE_BUY      = 1;
+    ORDER_SIDE_SELL     = 2;
+}
+
+// ---------------------------------------------------------------------------
+// OrderType
+// ---------------------------------------------------------------------------
+enum OrderType {
+    ORDER_TYPE_UNKNOWN          = 0;
+    ORDER_TYPE_MARKET           = 1;
+    ORDER_TYPE_LIMIT            = 2;
+    ORDER_TYPE_STOP_MARKET      = 3;
+    ORDER_TYPE_STOP_LIMIT       = 4;
+    ORDER_TYPE_TRAILING_STOP    = 5;
+    ORDER_TYPE_LIMIT_IF_TOUCHED = 6;
+}
+
+// ---------------------------------------------------------------------------
+// OrderStatus
+// ---------------------------------------------------------------------------
+enum OrderStatus {
+    ORDER_STATUS_UNKNOWN            = 0;
+    ORDER_STATUS_NEW                = 1;
+    ORDER_STATUS_SUBMITTED          = 2;
+    ORDER_STATUS_PARTIALLY_FILLED   = 3;
+    ORDER_STATUS_FILLED             = 4;
+    ORDER_STATUS_CANCELLED          = 5;
+    ORDER_STATUS_INVALID            = 6;
+    ORDER_STATUS_REJECTED           = 7;
+}
+
+// ---------------------------------------------------------------------------
+// Resolution — data bar time resolution
+// ---------------------------------------------------------------------------
+enum Resolution {
+    RESOLUTION_TICK     = 0;
+    RESOLUTION_SECOND   = 1;
+    RESOLUTION_MINUTE   = 2;
+    RESOLUTION_HOUR     = 3;
+    RESOLUTION_DAILY    = 4;
+}
+
+// ---------------------------------------------------------------------------
+// Bar — OHLCV price bar
+// ---------------------------------------------------------------------------
+message Bar {
+    Symbol      symbol      = 1;
+    Timestamp   timestamp   = 2;
+    Decimal     open        = 3;
+    Decimal     high        = 4;
+    Decimal     low         = 5;
+    Decimal     close       = 6;
+    Decimal     volume      = 7;
+    Resolution  resolution  = 8;
+}
+
+// ---------------------------------------------------------------------------
+// Quote — best bid/ask snapshot
+// ---------------------------------------------------------------------------
+message Quote {
+    Symbol      symbol      = 1;
+    Timestamp   timestamp   = 2;
+    Decimal     bid_price   = 3;
+    Decimal     bid_size    = 4;
+    Decimal     ask_price   = 5;
+    Decimal     ask_size    = 6;
+}
+
+// ---------------------------------------------------------------------------
+// Tick — individual trade tick
+// ---------------------------------------------------------------------------
+message Tick {
+    Symbol      symbol      = 1;
+    Timestamp   timestamp   = 2;
+    Decimal     price       = 3;
+    Decimal     quantity    = 4;
+    string      exchange    = 5;
+}
+
+// ---------------------------------------------------------------------------
+// ServiceStatus — used by engine for health monitoring
+// ---------------------------------------------------------------------------
+enum ServiceStatus {
+    SERVICE_STATUS_UNKNOWN      = 0;
+    SERVICE_STATUS_STARTING     = 1;
+    SERVICE_STATUS_RUNNING      = 2;
+    SERVICE_STATUS_DEGRADED     = 3;
+    SERVICE_STATUS_STOPPED      = 4;
+    SERVICE_STATUS_ERROR        = 5;
+}
+
+// ---------------------------------------------------------------------------
+// Edge identity — the canonical, FROZEN attribution tuple.
+//
+// Every streamed in-therapy / out-of-therapy event and every device-presence
+// record is attributable across five identities. The field names, types, and
+// semantics below are FROZEN here in the v0.5.x train so the later Health
+// (v0.6) and Therapy (v0.7) protos adopt them verbatim:
+//
+//   client_id          — the user/credential identity (JWT `sub`; the data
+//                        plane names it client_id). Bound at the service
+//                        boundary from the validated JWT header, never a payload.
+//   edge_id            — the phone/tablet installation UUID (one client_id →
+//                        many edge_ids); bound via Session.BindEdgeInstallation.
+//   device_chip_id     — Nordic nRF52840 factory chip id (FICR.DEVICEID),
+//                        hex-encoded. Therapy data is logged against this.
+//   device_product_id  — short-int firmware product id → the `products`
+//                        reference table (WAP-4-xxx + capability).
+//   wearable_id        — Edge-assigned stable wearable UUID.
+//   therapy_session_id — globally-unique (UUIDv7/ULID) per therapy session
+//                        (introduced in Therapy.proto, v0.7).
+//
+// There is NO device_session_id in the cloud model. See
+// docs/plans/edge-identity.md.
+// ---------------------------------------------------------------------------
+
+// DeviceCategory — closed catalog for an attached device's kind.
+enum DeviceCategory {
+    DEVICE_CATEGORY_UNKNOWN        = 0;
+    DEVICE_CATEGORY_THERAPY_DEVICE = 1;   // a BLE therapy device (nRF52840)
+    DEVICE_CATEGORY_WEARABLE       = 2;   // a health wearable (HealthKit / Health Connect)
+}
+
+// AttachedDevice — one device attached to an Edge installation. Carries the
+// frozen device-level identity fields; the presence/event envelope carries
+// client_id + edge_id.
+message AttachedDevice {
+    DeviceCategory category          = 1;
+    string         device_chip_id    = 2;   // Nordic FICR.DEVICEID (therapy devices)
+    int32          device_product_id = 3;   // firmware product id → products (WAP-4-xxx)
+    string         wearable_id       = 4;   // wearables
+    bool           connected         = 5;   // currently connected / available
+    int64          last_seen         = 6;   // Unix epoch seconds
+}
+
+// ---------------------------------------------------------------------------
+// Empty — for RPCs that need no request or response payload
+// ---------------------------------------------------------------------------
+message Empty {}

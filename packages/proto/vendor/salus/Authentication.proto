@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package Salus.Authentication;
+
+option cc_enable_arenas = true;
+
+// ===========================================================================
+// Authentication Service — the platform's credential authority + token issuer.
+//
+// A client presents credentials (client_id + client_secret) to Authenticate
+// and, if they verify, receives a short-lived RS256 JWT signed by this
+// service's private key. That token is what the Envoy edge validates (against
+// this service's public JWKS, fetched via remote_jwks) before routing
+// authenticated calls — e.g. Network.Register or the ServerTest methods.
+//
+// The Authenticate route itself is the ONE unauthenticated route on the edge
+// (you can't hold a token before you authenticate); every other route requires
+// the token this service mints.
+//
+// Validate is a convenience introspection RPC — Envoy is the real gate, but a
+// peer that wants to check a token out-of-band can call it.
+// ===========================================================================
+service Authentication {
+    // Verify credentials and, on success, mint a signed Bearer JWT.
+    rpc Authenticate(AuthenticateRequest) returns (AuthenticateResponse);
+
+    // Introspect a token: verify its signature + expiry locally and echo the
+    // subject / scopes it carries. Envoy remains the enforcement point.
+    rpc Validate(ValidateRequest) returns (ValidateResponse);
+}
+
+// ---------------------------------------------------------------------------
+// AuthenticateRequest — two grants, one response.
+//   client_id / client_secret     — client-credentials grant (machine/test
+//                                    clients): the credential is looked up by
+//                                    client_id.
+//   client_address / client_secret — login grant (a human handle, e.g. an
+//                                    email): the credential is resolved
+//                                    client_address → client_id. When
+//                                    client_address is set it takes precedence.
+//   scopes                          — requested scopes; the grant is the
+//                                    intersection with what the credential allows.
+// Either grant mints a token whose `sub` claim IS the resolved client_id — the
+// data plane's identity. See docs/plans/edge-identity.md.
+// ---------------------------------------------------------------------------
+message AuthenticateRequest {
+    string          client_id      = 1;
+    string          client_secret  = 2;
+    repeated string scopes         = 3;
+    string          client_address = 4;   // login-grant handle; resolves → client_id
+}
+
+// ---------------------------------------------------------------------------
+// AuthenticateResponse — the minted token, or a refusal.
+//   granted     — true iff credentials verified and a token was issued.
+//   token       — the compact RS256 JWT (empty when not granted).
+//   expires_at  — token expiry, Unix epoch seconds (0 when not granted).
+//   token_type  — "Bearer" on success.
+//   message     — human-readable detail (refusals never reveal which field
+//                 was wrong).
+// ---------------------------------------------------------------------------
+message AuthenticateResponse {
+    bool            granted    = 1;
+    string          token      = 2;
+    int64           expires_at = 3;
+    string          token_type = 4;
+    string          message    = 5;
+}
+
+// ---------------------------------------------------------------------------
+// Validate — token introspection.
+// ---------------------------------------------------------------------------
+message ValidateRequest {
+    string token = 1;
+}
+
+message ValidateResponse {
+    bool            valid      = 1;
+    string          subject    = 2;   // the token's `sub` claim
+    repeated string scopes     = 3;   // the token's `scope` claim, split on spaces
+    int64           expires_at = 4;   // the token's `exp` claim
+    string          message    = 5;   // reason when not valid
+}

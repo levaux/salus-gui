@@ -1,0 +1,998 @@
+syntax = "proto3";
+
+package Salus.EdgeControl;
+
+import "Health.proto";
+import "Therapy.proto";
+
+option cc_enable_arenas = true;
+
+// ===========================================================================
+// EdgeControl — the cloud desired/reported-state plane (decision §9).
+//
+// The Edge is governed, not driven. Cloud declares a DESIRED state; the Edge
+// converges to it on its own schedule and publishes a REPORTED state. Nothing
+// here is a liveness requirement: an Edge that cannot reach EdgeControl keeps
+// executing its last activated configuration revision, exactly as one that
+// cannot reach Protocol keeps executing its last allocated assignment.
+//
+// This file grows one contract family per commit across the v0.8.x train
+// (configuration v0.8.1, command/lease v0.8.2, field-test v0.8.3, OTA v0.8.4,
+// safety/reported-state v0.8.5), and the SERVICE surface itself arrives at
+// v0.8.6. Each row FREEZES the field numbering of the messages it introduces;
+// later rows append and never renumber. Removed fields are reserved and numbers
+// are never reused.
+//
+// --- v0.8.1: the configuration slice --------------------------------------
+//
+// The per-profile configuration contracts are NOT redefined here. Health.proto
+// froze AggregatePlan / MetricPlan / OutOfTherapyProfile / InTherapyProfile /
+// TherapyCaptureProfile / SafetyPolicy / EdgeConfiguration at v0.6.1
+// specifically so this plane imports and reuses them (see the comment above
+// Health.proto's EdgeConfiguration). What EdgeControl adds is the DISTRIBUTION
+// envelope around them: an immutable revision, an assignment of one revision to
+// one Edge, and the Edge's reported convergence.
+//
+// The shape deliberately mirrors Protocol (decision §16), which solved the same
+// problem for protocol distribution: immutable revision -> assignment naming an
+// exact revision -> pull/verify/activate -> reported state. Editing a
+// configuration makes a new revision; re-targeting makes a new assignment.
+// Rollback is a NEW, HIGHER revision carrying an older payload — never a
+// decrement — so the Edge's monotonic-revision rule (SalusVault
+// EdgeConfigManager, v0.6.3) holds unchanged.
+//
+// --- v0.8.2: the command / lease / approval slice --------------------------
+//
+// The device-facing vocabulary is NOT redefined here either. Therapy.proto froze
+// ProductKind / FeatureKind / FeatureUnit / TherapyState at v0.7.1 and the
+// SalusTherapy catalog is the authority on which feature a product supports and
+// what range it accepts; this file imports them so a cloud command and the BLE
+// execution that fulfils it cannot drift apart. What EdgeControl adds is the
+// AUTHORITY envelope around a device operation: who may issue it, against which
+// target identity, under what lease and approval, with what idempotency, and how
+// its outcome is durably recorded.
+//
+// Two properties carry over from v0.5.10's routine_execution_claims because they
+// were learned the expensive way there:
+//
+//   * a command that may have put bytes on the wire but whose response was lost
+//     is INDETERMINATE, and INDETERMINATE is resolved only EXPLICITLY, by an
+//     observation that says which way it went. It never times out into success
+//     and never expires into failure. Guessing costs a double-actuation.
+//   * once execution has begun the command is LOCKED — cancellation is a
+//     pre-execution privilege only, exactly as releasing a claim is valid only
+//     before a start is committed.
+//
+// A command is issued to a durable record FIRST and dispatched second, so an
+// EdgeControl replica that dies between the two loses nothing an operator was
+// told had happened. The v0.8.6 service supplies the channel; this row supplies
+// the record it is obliged to keep.
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// Configuration revisions — immutable once created (v0.8.1)
+// ---------------------------------------------------------------------------
+
+// An immutable, signed configuration revision. `payload` is the frozen
+// Health.EdgeConfiguration; `canonical_hash` is computed over its deterministic
+// serialization and is what the Edge re-derives to verify it received what was
+// published (the same verify-by-recompute rule the Protocol pull path uses).
+//
+// `revision` is dense and monotonic PER SCOPE, matching the Edge-side
+// EdgeConfigManager contract: an activation is accepted only when it is
+// strictly higher than the active one, which is why a rollback must be issued
+// as a new higher revision rather than by re-pointing at an old one.
+message ConfigurationRevision {
+    string configuration_id     = 1;   // stable identity across revisions
+    uint64 revision             = 2;   // dense, monotonic per configuration_id
+    Salus.Health.EdgeConfiguration payload = 3;
+    bytes  canonical_hash       = 4;   // SHA-256 over deterministic bytes
+    bytes  signature            = 5;   // over canonical_hash
+    string signer_key_id        = 6;
+    int64  created_at_us        = 7;   // WallClock µs since Unix epoch
+    string created_by           = 8;   // operator subject
+    string note                 = 9;   // free-text change note (never parsed)
+}
+
+// The scope a configuration is assigned to. Exactly one of these is set.
+// CLIENT applies to every Edge installation a client owns; EDGE targets one
+// installation. An EDGE assignment wins over a CLIENT one for that edge_id.
+enum ConfigurationScopeKind {
+    CONFIG_SCOPE_UNSPECIFIED = 0;
+    CONFIG_SCOPE_CLIENT      = 1;
+    CONFIG_SCOPE_EDGE        = 2;
+}
+
+message ConfigurationScope {
+    ConfigurationScopeKind kind = 1;
+    string client_id            = 2;   // always set (the JWT subject)
+    string edge_id              = 3;   // set iff kind == CONFIG_SCOPE_EDGE
+}
+
+// One revision allocated to one scope. At most one assignment is ACTIVE per
+// scope at a time; superseding one creates a new assignment row rather than
+// mutating this one, so the allocation history is append-only and auditable.
+message ConfigurationAssignment {
+    string assignment_id        = 1;
+    ConfigurationScope scope    = 2;
+    string configuration_id     = 3;
+    uint64 revision             = 4;   // the exact revision, never "latest"
+    uint64 allocation_revision  = 5;   // dense monotonic per scope
+    int64  allocated_at_us      = 6;
+    string allocated_by         = 7;   // operator subject
+    int64  not_before_us        = 8;   // 0 = effective immediately
+    bool   active               = 9;   // false once superseded or revoked
+    int64  revoked_at_us        = 10;  // 0 while active
+}
+
+// ---------------------------------------------------------------------------
+// Reported configuration state — what the Edge says it actually has (v0.8.1)
+// ---------------------------------------------------------------------------
+
+// How far an Edge has got with its assigned revision. The Edge is the only
+// writer of this; cloud never infers convergence from a dispatch succeeding.
+enum ConfigurationConvergence {
+    CONFIG_CONVERGENCE_UNSPECIFIED = 0;
+    CONFIG_CONVERGENCE_PENDING     = 1;  // assignment seen, not yet staged
+    CONFIG_CONVERGENCE_STAGED      = 2;  // verified + written, not yet active
+    CONFIG_CONVERGENCE_ACTIVE      = 3;  // activated; this is the live revision
+    CONFIG_CONVERGENCE_REJECTED    = 4;  // failed verify/validate — see reason
+    CONFIG_CONVERGENCE_SUPERSEDED  = 5;  // a higher revision activated first
+}
+
+// Why a revision was rejected. Closed catalog — a rejection is never free text,
+// so an operator dashboard can aggregate it and the Edge can be tested against
+// exact codes. Mirrors the HEALTH_/THERAPY_ code-catalog convention.
+enum ConfigurationRejectReason {
+    CONFIG_REJECT_UNSPECIFIED        = 0;
+    CONFIG_REJECT_BAD_SIGNATURE      = 1;
+    CONFIG_REJECT_HASH_MISMATCH      = 2;  // recomputed hash != published hash
+    CONFIG_REJECT_STALE_REVISION     = 3;  // not strictly higher than active
+    CONFIG_REJECT_UNKNOWN_METRIC     = 4;  // outside the SalusHealth catalog
+    CONFIG_REJECT_OUT_OF_RANGE       = 5;  // a plan value outside its bounds
+    CONFIG_REJECT_UNSUPPORTED_PRODUCT = 6; // product not in the device catalog
+    CONFIG_REJECT_STORAGE_FAILURE    = 7;  // could not stage durably
+}
+
+// The Edge's reported configuration state for one scope. `active_revision` is
+// the revision actually running — which may lag `assigned_revision` while an
+// Edge is offline, and MUST NOT be assumed equal to it.
+message ReportedConfigurationState {
+    string edge_id                  = 1;
+    string client_id                = 2;
+    string configuration_id         = 3;
+    uint64 assigned_revision        = 4;   // what cloud last allocated
+    uint64 active_revision          = 5;   // what the Edge is actually running
+    ConfigurationConvergence convergence = 6;
+    ConfigurationRejectReason reject_reason = 7;  // set iff REJECTED
+    string reject_detail            = 8;   // diagnostic; never parsed
+    int64  reported_at_us           = 9;   // Edge WallClock µs
+    int64  received_at_us           = 10;  // cloud WallClock µs on ingest
+    bytes  active_payload_hash      = 11;  // proves WHICH bytes are live
+}
+
+// ---------------------------------------------------------------------------
+// Maintenance leases — the mutual exclusion behind a dangerous command (v0.8.2)
+// ---------------------------------------------------------------------------
+
+// A short-lived exclusive hold on one physical device (or on an Edge as a whole
+// when device_chip_id is empty). Decision §11 requires one for every dangerous
+// maintenance command; its job is to make "two operators resetting the same
+// chamber at once" unrepresentable rather than merely unlikely.
+//
+// At most one lease is ACTIVE per (client_id, edge_id, device_chip_id) — a
+// schema-enforced rule, not an accessor convention. `lease_epoch` is monotonic
+// per scope so a stale holder's writes are recognisably stale after a reclaim,
+// and the grant duration is capped by the schema: a lease that could be held for
+// a week is not a lease, it is an ownership transfer.
+enum LeaseState {
+    LEASE_STATE_UNSPECIFIED = 0;
+    LEASE_ACTIVE            = 1;
+    LEASE_RELEASED          = 2;  // holder gave it up
+    LEASE_EXPIRED           = 3;  // reclaimed after expires_at_us
+    LEASE_REVOKED           = 4;  // taken back by an operator
+}
+
+message MaintenanceLease {
+    string lease_id             = 1;
+    string client_id            = 2;
+    string edge_id              = 3;
+    string device_chip_id       = 4;   // "" = the Edge itself, not one device
+    string holder               = 5;   // operator or service subject
+    repeated string scopes      = 6;   // RBAC scopes this lease confers
+    uint64 lease_epoch          = 7;   // monotonic per scope; bumped per grant
+    LeaseState state            = 8;
+    bool   require_idle_therapy = 9;   // normally true (§11)
+    int64  granted_at_us        = 10;
+    int64  expires_at_us        = 11;
+    int64  terminal_at_us       = 12;  // 0 while ACTIVE
+    string terminal_reason      = 13;
+}
+
+// ---------------------------------------------------------------------------
+// Typed commands — the full BLE surface, addressable, never an open byte pipe
+// ---------------------------------------------------------------------------
+
+// The command classes of decision §11. A family determines which authority rules
+// apply, so it is a closed catalog rather than a property of the payload: a
+// FEATURE_WRITE is bounds- and phase-checked, a MAINTENANCE command additionally
+// demands a lease and elevated scope.
+//
+// 6 = FIELD_TEST, 7 = OTA and 8 = SAFETY are appended by v0.8.3 / v0.8.4 /
+// v0.8.5 with their contracts; the numbers are spoken for, not yet defined.
+enum CommandFamily {
+    COMMAND_FAMILY_UNSPECIFIED   = 0;
+    COMMAND_FAMILY_DISCOVERY     = 1;  // identity, status, faults, feature list
+    COMMAND_FAMILY_FEATURE_READ  = 2;
+    COMMAND_FAMILY_FEATURE_WRITE = 3;
+    COMMAND_FAMILY_SESSION       = 4;  // ownership + Therapy session lifecycle
+    COMMAND_FAMILY_MAINTENANCE   = 5;  // restart / reset / clear faults
+}
+
+// Mirrors SalusTherapy::CommandPriority. SAFETY preempts the Edge's pending
+// NORMAL queue (never an in-flight command) — see BleCommandExecutor (v0.7.3).
+enum CommandPriority {
+    COMMAND_PRIORITY_UNSPECIFIED = 0;
+    COMMAND_PRIORITY_NORMAL      = 1;
+    COMMAND_PRIORITY_SAFETY      = 2;
+}
+
+// The durable cloud-side lifecycle. Distinct from SalusTherapy's CommandOutcome,
+// which is the Edge's local verdict on one execution attempt; this is the record
+// the cloud keeps and an operator queries.
+//
+// COMMAND_INDETERMINATE is deliberately NOT terminal. It is the honest state for
+// "the bytes may have reached the device and we did not hear back", and the only
+// exits are SUCCEEDED or FAILED via an explicit observation carrying a
+// CommandResolutionSource. Allowing it to lapse into either would fabricate a
+// fact about a physical machine.
+enum CommandState {
+    COMMAND_STATE_UNSPECIFIED = 0;
+    COMMAND_PENDING           = 1;   // durably issued; Edge may be offline
+    COMMAND_DISPATCHED        = 2;   // written to the Edge's control channel
+    COMMAND_ACCEPTED          = 3;   // Edge acknowledged and queued it
+    COMMAND_EXECUTING         = 4;   // LOCKED — no longer cancellable
+    COMMAND_INDETERMINATE     = 5;   // LOCKED — explicit resolution only
+    COMMAND_SUCCEEDED         = 6;
+    COMMAND_FAILED            = 7;
+    COMMAND_REJECTED          = 8;   // refused; reject_reason always set
+    COMMAND_EXPIRED           = 9;   // never dispatched inside its window
+    COMMAND_CANCELLED         = 10;  // withdrawn before execution began
+}
+
+// Why a command was refused. Closed catalog, so a refusal aggregates on an
+// operator dashboard and the Edge can be tested against exact codes.
+enum CommandRejectReason {
+    COMMAND_REJECT_UNSPECIFIED            = 0;
+    COMMAND_REJECT_UNSUPPORTED_CAPABILITY = 1;  // not in the device catalog
+    COMMAND_REJECT_OUT_OF_BOUNDS          = 2;  // value outside the catalog range
+    COMMAND_REJECT_NOT_OWNER              = 3;  // ownership precondition unmet
+    COMMAND_REJECT_WRONG_PHASE            = 4;  // illegal in the current phase
+    COMMAND_REJECT_IDENTITY_MISMATCH      = 5;  // wrong device/product answered
+    COMMAND_REJECT_FIRMWARE_INCOMPATIBLE  = 6;
+    COMMAND_REJECT_SCOPE_DENIED           = 7;  // issuer lacks the RBAC scope
+    COMMAND_REJECT_LEASE_REQUIRED         = 8;
+    COMMAND_REJECT_LEASE_EXPIRED          = 9;  // lease lapsed before dispatch
+    COMMAND_REJECT_APPROVAL_REQUIRED      = 10; // no granted approval on file
+    COMMAND_REJECT_NOT_CONNECTED          = 11; // read command, link down
+}
+
+// What proved which way an INDETERMINATE command actually went. Never empty on a
+// resolution — an unexplained resolution is exactly the thing being prevented.
+enum CommandResolutionSource {
+    COMMAND_RESOLUTION_UNSPECIFIED   = 0;
+    COMMAND_RESOLUTION_DEVICE_STATUS = 1;  // observed Session Status
+    COMMAND_RESOLUTION_FEATURE_READ  = 2;  // read back the written feature
+    COMMAND_RESOLUTION_SESSION_LOG   = 3;  // indexed device log
+    COMMAND_RESOLUTION_OPERATOR      = 4;  // adjudicated by a human, audited
+}
+
+// Who the command is for. Identity is checked at execution, not just at issue:
+// an Edge that finds a different chip or product than named must refuse rather
+// than act on the nearest device it can see (COMMAND_REJECT_IDENTITY_MISMATCH).
+message CommandTarget {
+    string client_id                   = 1;
+    string edge_id                     = 2;
+    string device_chip_id              = 3;  // "" = the Edge, not a device
+    Salus.Therapy.ProductKind expected_product = 4;
+    string expected_firmware_min       = 5;  // "" = unconstrained
+    string expected_firmware_max       = 6;
+}
+
+enum DiscoveryOp {
+    DISCOVERY_OP_UNSPECIFIED  = 0;
+    DISCOVERY_OP_INFO         = 1;
+    DISCOVERY_OP_STATUS       = 2;
+    DISCOVERY_OP_FAULT_CODES  = 3;
+    DISCOVERY_OP_FEATURE_LIST = 4;
+}
+
+message DiscoveryCommand {
+    DiscoveryOp op = 1;
+}
+
+message FeatureReadCommand {
+    repeated Salus.Therapy.FeatureKind features = 1;  // empty = all supported
+}
+
+// A validated write. `unit` must be the catalog's canonical unit for `feature`
+// and `raw_value` is already in it — the cloud does not send a unit for the Edge
+// to convert, because a conversion is a place for a factor-of-ten to hide.
+message FeatureWriteCommand {
+    Salus.Therapy.FeatureKind feature = 1;
+    sint64 raw_value                  = 2;
+    Salus.Therapy.FeatureUnit unit    = 3;
+    bool   verify_after_write         = 4;  // read back and compare
+}
+
+enum SessionOp {
+    SESSION_OP_UNSPECIFIED       = 0;
+    SESSION_OP_TAKE_OWNERSHIP    = 1;
+    SESSION_OP_RELEASE_OWNERSHIP = 2;
+    SESSION_OP_CONFIGURE         = 3;
+    SESSION_OP_START             = 4;
+    SESSION_OP_STOP              = 5;
+    SESSION_OP_GET_STATUS        = 6;
+    SESSION_OP_GET_LOGS          = 7;
+    SESSION_OP_CLEAR             = 8;
+}
+
+message SessionCommand {
+    SessionOp op              = 1;
+    string    therapy_session_id = 2;
+    uint32    log_start       = 3;  // GET_LOGS: first index
+    uint32    log_count       = 4;
+}
+
+// Restart/reset/clear-faults. Never a substitute for an approved emergency-stop
+// sequence (§12) — the safety path is its own family, landing at v0.8.5.
+enum MaintenanceOp {
+    MAINTENANCE_OP_UNSPECIFIED  = 0;
+    MAINTENANCE_OP_RESTART      = 1;
+    MAINTENANCE_OP_RESET        = 2;
+    MAINTENANCE_OP_CLEAR_FAULTS = 3;
+}
+
+message MaintenanceCommand {
+    MaintenanceOp op = 1;
+}
+
+// One authorised device operation. `command_id` is the durable identity minted
+// by the cloud; `idempotency_key` is the caller's dedup token, so a retried
+// issue returns the ORIGINAL command rather than minting a second one that does
+// the same physical thing.
+message EdgeCommand {
+    string command_id                 = 1;
+    string idempotency_key            = 2;
+    CommandFamily family              = 3;
+    CommandTarget target              = 4;
+    CommandPriority priority          = 5;
+    string issued_by                  = 6;   // operator or service subject
+    repeated string authorized_scopes = 7;   // RBAC scopes proven at issue
+    int64  issued_at_us               = 8;
+    int64  not_before_us              = 9;   // 0 = dispatchable immediately
+    int64  expires_at_us              = 10;  // never dispatched after this
+    int64  timeout_us                 = 11;  // per-attempt execution timeout
+    uint32 max_attempts               = 12;
+    string lease_id                   = 13;  // required for MAINTENANCE
+    bool   requires_approval          = 14;  // dispatch needs a GRANTED approval
+    uint64 configuration_revision     = 15;  // policy revision in force at issue
+    bytes  signature                  = 16;
+
+    oneof payload {
+        DiscoveryCommand    discovery     = 20;
+        FeatureReadCommand  feature_read  = 21;
+        FeatureWriteCommand feature_write = 22;
+        SessionCommand      session       = 23;
+        MaintenanceCommand  maintenance   = 24;
+        // 25 = field test (v0.8.3), 26 = OTA (v0.8.4), 27 = safety (v0.8.5)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Command status — what actually happened, with before/after device state
+// ---------------------------------------------------------------------------
+
+message FeatureObservation {
+    Salus.Therapy.FeatureKind feature = 1;
+    sint64 raw_value                  = 2;
+    Salus.Therapy.FeatureUnit unit    = 3;
+}
+
+// Device state either side of a command. Capturing both is what makes a write
+// verifiable after the fact rather than merely acknowledged, and what a
+// field-test plan (v0.8.3) restores from.
+message DeviceStateSnapshot {
+    Salus.Therapy.TherapyState therapy_state = 1;
+    repeated FeatureObservation features     = 2;
+    int64 observed_at_us                     = 3;
+}
+
+message CommandStatus {
+    string command_id                     = 1;
+    CommandState state                    = 2;
+    CommandRejectReason reject_reason     = 3;   // set iff REJECTED
+    string reject_detail                  = 4;   // diagnostic; never parsed
+    uint32 attempt                        = 5;
+    CommandResolutionSource resolution_source = 6;  // set iff resolved from
+                                                    // INDETERMINATE
+    bool   result_verified                = 7;   // read-back confirmed the write
+    int64  dispatched_at_us               = 8;
+    int64  terminal_at_us                 = 9;
+    int64  reported_at_us                 = 10;  // Edge WallClock µs
+    int64  received_at_us                 = 11;  // cloud WallClock µs
+    DeviceStateSnapshot before             = 12;
+    DeviceStateSnapshot after              = 13;
+}
+
+// Withdraw a command that has not begun executing. Cancellation is best-effort
+// by nature: the authoritative answer is the command's own state, and an Edge
+// that has already started will refuse.
+message CancelDirective {
+    string command_id      = 1;
+    string cancelled_by    = 2;
+    string reason          = 3;
+    int64  cancelled_at_us = 4;
+}
+
+// ---------------------------------------------------------------------------
+// Approvals — four-eyes on a dangerous command (v0.8.2)
+// ---------------------------------------------------------------------------
+
+enum ApprovalDecision {
+    APPROVAL_DECISION_UNSPECIFIED = 0;
+    APPROVAL_GRANTED              = 1;
+    APPROVAL_DENIED               = 2;
+}
+
+// One approver's decision on one command. Immutable once recorded: a decision is
+// never edited or withdrawn — withdrawing means cancelling the command, which
+// leaves both facts in the audit. The issuer of a command may not approve it;
+// that separation is enforced by the schema, not by the caller.
+message CommandApproval {
+    string approval_id     = 1;
+    string command_id      = 2;
+    string client_id       = 3;
+    string approver        = 4;
+    ApprovalDecision decision = 5;
+    string reason          = 6;
+    int64  decided_at_us   = 7;
+}
+
+// ---------------------------------------------------------------------------
+// Field-test plans — a bounded, restorable transaction over a device (v0.8.3)
+// ---------------------------------------------------------------------------
+//
+// A field test is the one place an operator deliberately perturbs a device that
+// is not running a therapy, to prove a fault or verify a repair. Three rules
+// shape the contract, all from decision §11:
+//
+//   * READ-ONLY IS THE DEFAULT SCOPE. A plan that only interrogates and asserts
+//     needs no lease. The moment it contains a single write it becomes a
+//     `device.field_test.write` operation requiring a maintenance lease and an
+//     explicit cleanup policy — enforced by the schema, not by review.
+//   * A WRITE CAPTURES WHAT IT OVERWROTE. You may not change a device value
+//     without first recording what it was, because the plan is obliged to put it
+//     back. A write step that does not capture is unrepresentable.
+//   * A PLAN IS BOUNDED. Step count, per-step timeout and total budget are all
+//     capped, and the steps' timeouts must fit inside the plan's budget. An
+//     unbounded field test is not a field test, it is an open session with a
+//     device someone has stopped watching.
+//
+// Field testing cannot disable firmware or hardware safety mechanisms. That is
+// structural rather than a check: the step kinds below are a closed catalog with
+// no verb that could express it, and the maintenance/OTA families are not
+// reachable from a plan at all.
+//
+// A plan revision is immutable, for the same reason a configuration revision is:
+// a run names an exact plan revision, and a plan whose steps could change under
+// a running test would make the audit meaningless.
+
+enum FieldTestStepKind {
+    FIELD_TEST_STEP_UNSPECIFIED = 0;
+    FIELD_TEST_INTERROGATE      = 1;  // identity / version / feature list
+    FIELD_TEST_READ_FEATURE     = 2;
+    FIELD_TEST_WRITE_FEATURE    = 3;  // always captures the prior value
+    FIELD_TEST_WAIT             = 4;  // bounded settle, with a deadline
+    FIELD_TEST_ASSERT           = 5;
+    FIELD_TEST_RESTORE          = 6;  // put a captured value back
+}
+
+// How an ASSERT step compares what it observed. Closed catalog — an assertion
+// expressed as free text could not be evaluated identically by the Edge and by
+// an operator reading the result afterwards.
+enum FieldTestAssertOp {
+    FIELD_TEST_ASSERT_UNSPECIFIED = 0;
+    FIELD_TEST_ASSERT_EQUALS      = 1;
+    FIELD_TEST_ASSERT_IN_RANGE    = 2;  // inclusive [low, high]
+    FIELD_TEST_ASSERT_STATE_IS    = 3;  // therapy state
+    FIELD_TEST_ASSERT_PRESENT     = 4;  // the feature is supported/readable
+}
+
+// What the Edge does with a half-finished plan when the control channel drops
+// mid-run. A plan that writes must choose one that actually cleans up: leaving
+// a perturbed device alone because nobody was listening is the failure mode this
+// field exists to forbid.
+enum FieldTestCleanupPolicy {
+    FIELD_TEST_CLEANUP_UNSPECIFIED = 0;
+    FIELD_TEST_CLEANUP_NONE        = 1;  // legal ONLY for a read-only plan
+    FIELD_TEST_CLEANUP_RESTORE     = 2;  // put every captured value back
+    FIELD_TEST_CLEANUP_SAFE_STATE  = 3;  // apply the product's safe-state writes
+}
+
+message FieldTestReadStep {
+    Salus.Therapy.FeatureKind feature = 1;
+}
+
+message FieldTestWriteStep {
+    Salus.Therapy.FeatureKind feature = 1;
+    sint64 raw_value                  = 2;
+    Salus.Therapy.FeatureUnit unit    = 3;
+}
+
+message FieldTestWaitStep {
+    int64 duration_us = 1;   // bounded by the step's own timeout
+}
+
+message FieldTestAssertStep {
+    FieldTestAssertOp op              = 1;
+    Salus.Therapy.FeatureKind feature = 2;
+    sint64 expected                   = 3;   // EQUALS
+    sint64 low                        = 4;   // IN_RANGE
+    sint64 high                       = 5;   // IN_RANGE
+    Salus.Therapy.TherapyState expected_state = 6;  // STATE_IS
+}
+
+message FieldTestRestoreStep {
+    uint32 capture_from_step = 1;   // index of the WRITE step whose prior value
+                                    // this puts back
+}
+
+message FieldTestStep {
+    uint32 step_index          = 1;   // dense from 0, execution order
+    FieldTestStepKind kind     = 2;
+    int64  timeout_us          = 3;   // capped by the schema
+    bool   capture_before      = 4;   // required true for WRITE_FEATURE
+    bool   continue_on_failure = 5;   // an assert may be advisory
+
+    oneof step {
+        FieldTestReadStep    read    = 10;
+        FieldTestWriteStep   write   = 11;
+        FieldTestWaitStep    wait    = 12;
+        FieldTestAssertStep  assert  = 13;
+        FieldTestRestoreStep restore = 14;
+    }
+}
+
+// What must be true before a plan may start. The Edge re-checks these locally
+// immediately before executing — a cloud-side check is necessary but never
+// sufficient, because the cloud's view of a device is always slightly stale.
+message FieldTestPreconditions {
+    bool   require_idle_therapy      = 1;  // normally true
+    bool   require_operator_presence = 2;  // a human is physically present
+    Salus.Therapy.ProductKind expected_product = 3;
+    string expected_firmware_min     = 4;
+    string expected_firmware_max     = 5;
+    bool   require_ownership         = 6;
+}
+
+// An immutable, bounded plan revision.
+message FieldTestPlan {
+    string plan_id                    = 1;
+    uint64 revision                   = 2;   // dense, monotonic per plan_id
+    string name                       = 3;
+    FieldTestPreconditions preconditions = 4;
+    repeated FieldTestStep steps      = 5;
+    int64  total_budget_us            = 6;   // capped; must cover every step
+    FieldTestCleanupPolicy cleanup    = 7;
+    bool   requires_lease             = 8;   // forced true when any step writes
+    repeated string required_scopes   = 9;
+    bytes  canonical_hash             = 10;
+    bytes  signature                  = 11;
+    string signer_key_id              = 12;
+    int64  created_at_us              = 13;
+    string created_by                 = 14;
+}
+
+// ---------------------------------------------------------------------------
+// Field-test runs — one execution of one plan revision (v0.8.3)
+// ---------------------------------------------------------------------------
+
+// A run's progress. RESTORING is a state of its own rather than a phase of
+// RUNNING because it is the part that must not be skipped: a run that captured
+// device values has an obligation to put them back, and COMPLETED is not
+// reachable until it has.
+enum FieldTestRunState {
+    FIELD_TEST_RUN_UNSPECIFIED = 0;
+    FIELD_TEST_RUN_PENDING     = 1;
+    FIELD_TEST_RUN_RUNNING     = 2;
+    FIELD_TEST_RUN_RESTORING   = 3;
+    FIELD_TEST_RUN_COMPLETED   = 4;  // terminal and clean
+    FIELD_TEST_RUN_ABANDONED   = 5;  // terminal and NOT clean — see below
+}
+
+// The verdict is orthogonal to the state: a plan can fail its assertions and
+// still restore perfectly (COMPLETED + FAILED), or pass every assertion and fail
+// to restore (ABANDONED + PASSED). Collapsing them would hide the second case,
+// which is the dangerous one.
+enum FieldTestVerdict {
+    FIELD_TEST_VERDICT_UNSET = 0;
+    FIELD_TEST_VERDICT_PASSED = 1;
+    FIELD_TEST_VERDICT_FAILED = 2;   // an assertion did not hold
+    FIELD_TEST_VERDICT_ABORTED = 3;  // stopped before finishing
+}
+
+// Whether the device was put back the way it was found.
+//
+// FIELD_TEST_RESTORE_FAILED is the field-test analogue of a command's
+// INDETERMINATE: it means a physical device may be sitting in a state an
+// operator did not intend, so the run goes ABANDONED and stays an open
+// obligation until someone records that they checked. It never clears itself.
+enum FieldTestRestoreState {
+    FIELD_TEST_RESTORE_UNSPECIFIED  = 0;
+    FIELD_TEST_RESTORE_NOT_REQUIRED = 1;  // the plan never wrote anything
+    FIELD_TEST_RESTORE_PENDING      = 2;
+    FIELD_TEST_RESTORE_DONE         = 3;
+    FIELD_TEST_RESTORE_FAILED       = 4;
+}
+
+enum FieldTestAbortReason {
+    FIELD_TEST_ABORT_UNSPECIFIED       = 0;
+    FIELD_TEST_ABORT_PRECONDITION      = 1;  // idle/ownership/identity unmet
+    FIELD_TEST_ABORT_LEASE_LOST        = 2;
+    FIELD_TEST_ABORT_CHANNEL_DROPPED   = 3;
+    FIELD_TEST_ABORT_BUDGET_EXCEEDED   = 4;  // the plan ran out of its budget
+    FIELD_TEST_ABORT_ASSERT_FAILED     = 5;
+    FIELD_TEST_ABORT_DEVICE_ERROR      = 6;
+    FIELD_TEST_ABORT_OPERATOR          = 7;
+    FIELD_TEST_ABORT_SAFETY_PREEMPTED  = 8;  // an emergency stop took the device
+}
+
+enum FieldTestStepOutcome {
+    FIELD_TEST_STEP_OUTCOME_UNSPECIFIED = 0;
+    FIELD_TEST_STEP_OK        = 1;
+    FIELD_TEST_STEP_FAILED    = 2;
+    FIELD_TEST_STEP_SKIPPED   = 3;
+    FIELD_TEST_STEP_TIMED_OUT = 4;
+}
+
+// One step's result. `captured_value` is what was there BEFORE a write, and is
+// what a restore puts back — so it is recorded on the step that did the damage,
+// not on the plan, and it survives independently of whether the run completes.
+message FieldTestStepResult {
+    string run_id                     = 1;
+    uint32 step_index                 = 2;
+    FieldTestStepOutcome outcome      = 3;
+    string detail                     = 4;   // diagnostic; never parsed
+    sint64 observed_value             = 5;
+    bool   captured                   = 6;   // a prior value was recorded
+    sint64 captured_value             = 7;
+    bool   restored                   = 8;   // the prior value was put back
+    int64  started_at_us              = 9;
+    int64  finished_at_us             = 10;
+    int64  restored_at_us             = 11;
+}
+
+message FieldTestRun {
+    string run_id                     = 1;
+    string client_id                  = 2;
+    string edge_id                    = 3;
+    string device_chip_id             = 4;
+    string plan_id                    = 5;
+    uint64 plan_revision              = 6;   // the exact revision, never "latest"
+    string lease_id                   = 7;   // required when the plan writes
+    string requested_by               = 8;
+    FieldTestRunState state           = 9;
+    FieldTestVerdict verdict          = 10;
+    FieldTestRestoreState restore_state = 11;
+    FieldTestAbortReason abort_reason = 12;
+    string abort_detail               = 13;
+    // Set only when an ABANDONED run is closed out: what the operator found and
+    // did. Without it an abandoned run cannot be marked clean.
+    string restore_resolution         = 14;
+    int64  started_at_us              = 15;
+    int64  terminal_at_us             = 16;
+    repeated FieldTestStepResult results = 17;
+}
+
+// ---------------------------------------------------------------------------
+// OTA — signed firmware images and resumable jobs (v0.8.4)
+// ---------------------------------------------------------------------------
+//
+// The riskiest operation in the system: it replaces the firmware of a physical
+// machine, and a half-finished one can leave a device that will not boot. Four
+// rules from decision §11 shape the contract, and all four live in the schema:
+//
+//   * ONLY SIGNED FIRMWARE. A manifest with no signature cannot be stored, so
+//     an unsigned image is not something the system can be asked to flash.
+//   * COMPATIBILITY IS PART OF THE IMAGE, NOT THE REQUEST. The manifest names
+//     the product, the hardware revision range and the CURRENT-firmware window
+//     it may upgrade from. A job is checked against what the device actually
+//     reported, and the interrogated values are recorded on the job so the audit
+//     shows what the decision was made against.
+//   * PROGRESS ONLY MOVES FORWARD. The block checkpoint is monotonic — a resume
+//     can neither rewind and re-send acknowledged blocks nor skip ahead past
+//     ones that were never sent. This is the OTA form of the committed
+//     watermark that Health and Therapy ingest already rely on.
+//   * SUCCESS MEANS A VERIFIED VERSION. A job cannot reach SUCCEEDED without a
+//     post-reboot interrogation confirming the version actually running. "We
+//     sent all the blocks" is not the same fact.
+//
+// OTA_RECOVERY_REQUIRED is terminal-but-not-clean and never decays — the OTA
+// form of a command's INDETERMINATE and a field test's ABANDONED. A device that
+// took a partial image is an open obligation until someone records what they
+// found, and no timeout may quietly turn it into a failure.
+//
+// Cancellation is permitted right up to the point of no return. Before finalise
+// the device is still running its old image, so abandoning a transfer is safe
+// and cheap; after it, it is neither. That boundary is where OTA differs from a
+// typed command, which locks at the moment bytes go out.
+
+enum OtaJobState {
+    OTA_JOB_STATE_UNSPECIFIED = 0;
+    OTA_PENDING            = 1;  // created, nothing verified yet
+    OTA_MANIFEST_VERIFIED  = 2;  // signature + hash + compatibility + idle checked
+    OTA_TRANSFERRING       = 3;  // blocks going out; still cancellable
+    OTA_TRANSFERRED        = 4;  // every block acknowledged; past the safe point
+    OTA_FINALIZING         = 5;  // device is committing the image
+    OTA_SUCCEEDED          = 6;  // and the running version was CONFIRMED
+    OTA_FAILED             = 7;
+    OTA_REJECTED           = 8;  // refused before transfer; reason always set
+    OTA_ROLLED_BACK        = 9;  // device restored its previous image
+    OTA_RECOVERY_REQUIRED  = 10; // LOCKED — explicit resolution only
+    OTA_CANCELLED          = 11; // withdrawn before the point of no return
+}
+
+// Why an OTA was refused. Closed catalog so a refusal aggregates on an operator
+// dashboard rather than arriving as prose.
+enum OtaRejectReason {
+    OTA_REJECT_UNSPECIFIED           = 0;
+    OTA_REJECT_BAD_SIGNATURE         = 1;
+    OTA_REJECT_HASH_MISMATCH         = 2;   // image bytes != manifest hash
+    OTA_REJECT_INCOMPATIBLE_PRODUCT  = 3;
+    OTA_REJECT_INCOMPATIBLE_HARDWARE = 4;
+    OTA_REJECT_FIRMWARE_OUT_OF_WINDOW = 5;  // cannot upgrade FROM this version
+    OTA_REJECT_THERAPY_ACTIVE        = 6;   // idle-only, always
+    OTA_REJECT_INSUFFICIENT_POWER    = 7;
+    OTA_REJECT_LEASE_REQUIRED        = 8;
+    OTA_REJECT_LEASE_EXPIRED         = 9;
+    OTA_REJECT_TRANSFER_FAILED       = 10;
+    OTA_REJECT_VERIFY_FAILED         = 11;  // post-reboot version was wrong
+    OTA_REJECT_DEVICE_UNREACHABLE    = 12;
+    OTA_REJECT_SAFETY_PREEMPTED      = 13;  // an emergency stop took the device
+}
+
+// What a post-reboot interrogation found. A job reaches SUCCEEDED only on
+// OTA_VERIFY_VERSION_CONFIRMED — "every block was acknowledged" is a different
+// fact from "the device is running the image we sent".
+enum OtaVerifyOutcome {
+    OTA_VERIFY_UNSPECIFIED       = 0;
+    OTA_VERIFY_VERSION_CONFIRMED = 1;
+    OTA_VERIFY_VERSION_MISMATCH  = 2;
+    OTA_VERIFY_DEVICE_UNREACHABLE = 3;
+    OTA_VERIFY_NOT_ATTEMPTED     = 4;
+}
+
+// An immutable, signed firmware image and the constraints it may be applied
+// under. `image_hash` is unique per image_id: a version cannot be re-pointed at
+// different bytes, which is what makes verify-by-recompute mean anything.
+message OtaImageManifest {
+    string image_id                  = 1;
+    string version                   = 2;   // the version this image INSTALLS
+    Salus.Therapy.ProductKind product = 3;
+    string hardware_min              = 4;   // inclusive hardware revision range
+    string hardware_max              = 5;
+    // The CURRENT-firmware window this image may upgrade from. An image that
+    // assumes a bootloader only present from 1.4 onward must not be offered to
+    // a 1.2 device, and the constraint belongs to the image, not the request.
+    string upgrade_from_min          = 6;
+    string upgrade_from_max          = 7;
+    uint64 image_size_bytes          = 8;
+    uint32 block_size_bytes          = 9;
+    uint32 block_count               = 10;
+    bytes  image_hash                = 11;  // SHA-256 over the image bytes
+    bytes  signature                 = 12;  // required — never empty
+    string signer_key_id             = 13;
+    int64  created_at_us             = 14;
+    string created_by                = 15;
+    string release_note              = 16;  // free text, never parsed
+}
+
+// One attempt to put one image on one device.
+//
+// The interrogated_* fields record what the device actually reported at the time
+// the job was checked — not what the operator believed. When a compatibility
+// refusal is later reviewed, that difference is usually the whole story.
+message OtaJob {
+    string job_id                    = 1;
+    string client_id                 = 2;
+    string edge_id                   = 3;
+    string device_chip_id            = 4;
+    string image_id                  = 5;
+    string lease_id                  = 6;   // ALWAYS required (§11 device.ota)
+    string requested_by              = 7;
+    OtaJobState state                = 8;
+    OtaRejectReason reject_reason    = 9;   // set iff REJECTED
+    string reject_detail             = 10;
+
+    // What the device reported when the job was checked.
+    Salus.Therapy.ProductKind interrogated_product = 11;
+    string interrogated_hardware     = 12;
+    string interrogated_firmware     = 13;
+    bool   therapy_idle_verified     = 14;  // required to leave PENDING
+
+    // Durable transfer checkpoint. Monotonic — a resume starts here and never
+    // rewinds; reconnecting mid-transfer costs the blocks in flight, not the
+    // ones already acknowledged.
+    uint32 next_block_index          = 15;
+    uint64 bytes_transferred         = 16;
+    uint32 resume_count              = 17;  // how often this job had to resume
+
+    OtaVerifyOutcome verify_outcome  = 18;
+    string observed_version          = 19;  // what the device ran after reboot
+    // Set only when closing out a RECOVERY_REQUIRED job: what was found and
+    // done. Without it the state cannot be cleared.
+    string recovery_resolution       = 20;
+
+    int64  created_at_us             = 21;
+    int64  transfer_started_at_us    = 22;
+    int64  checkpoint_at_us          = 23;
+    int64  terminal_at_us            = 24;
+}
+
+// ---------------------------------------------------------------------------
+// Safety — local-first emergency stop, cloud-ASSISTED relay (v0.8.5)
+// ---------------------------------------------------------------------------
+//
+// The word ASSISTED is the whole design (decision §12). `EdgeSafetyEngine`
+// (v0.7.4) is and remains the PRIMARY emergency-stop path, and it gains no
+// dependency on any of this. The cloud relay is a secondary trigger for
+// conditions only cloud analytics can see; it must be able to fail entirely
+// without weakening a single local guarantee.
+//
+// That claim shapes the schema rather than merely being asserted in prose:
+//
+//   * A LOCAL_ENGINE safety event NEVER references a relay directive. The link
+//     column is barred for local events, so a locally-triggered stop is
+//     structurally incapable of depending on cloud state. A store cannot prove
+//     the absence of a dependency, but it can make the dependency
+//     unrepresentable in the record.
+//   * ONE STOP PER THERAPY SESSION. §12's dedup rule — local and cloud triggers
+//     deduplicate by safety-event/therapy-session id — is a partial unique
+//     index, so a double stop is a state the database will not hold rather than
+//     a race some code path has to win.
+//   * A relay directive that arrives after the local engine already stopped
+//     resolves to SUPERSEDED_BY_LOCAL, which is a SUCCESS. The local path
+//     winning is the system working correctly, and it must never be recorded as
+//     a failed delivery — a dashboard that counts it as one would teach
+//     operators to distrust exactly the path they should trust most.
+//   * MONITORING FAILS CONSERVATIVELY. A stale or quality-flagged sample flags
+//     impaired monitoring rather than triggering (v0.7.4), and the reported
+//     state cannot claim healthy monitoring while its data is not fresh.
+
+// Which path detected the condition. This is the dedup dimension: the Edge
+// reconciles the two by therapy-session id, and exactly one stop results.
+enum SafetyTriggerSource {
+    SAFETY_SOURCE_UNSPECIFIED = 0;
+    SAFETY_SOURCE_LOCAL_ENGINE = 1;  // EdgeSafetyEngine — the primary path
+    SAFETY_SOURCE_CLOUD_RELAY  = 2;  // Health analytics via EdgeControl
+}
+
+// Mirrors SalusTherapy::EdgeSafetyEngine::StopOutcome exactly (v0.7.4). The
+// distinction that matters is CONFIRMED_SAFE (the device was OBSERVED in its
+// safe state) versus COMMAND_SENT_UNCONFIRMED (the bytes went out and we did
+// not see the result). Collapsing them would let an unverified stop be reported
+// as a safe one.
+enum SafetyStopOutcome {
+    SAFETY_OUTCOME_UNSPECIFIED = 0;
+    SAFETY_NOT_TRIGGERED       = 1;  // legal only alongside impaired monitoring
+    SAFETY_CONFIRMED_SAFE      = 2;  // observed safe state — requires evidence
+    SAFETY_COMMAND_SENT_UNCONFIRMED = 3;
+    SAFETY_FAILED              = 4;
+}
+
+// How current the health data behind a safety decision is. Not an optimisation
+// hint: STALE and ABSENT both mean the local engine is running blind, and both
+// must surface as impaired monitoring rather than as silence.
+enum HealthFreshnessState {
+    HEALTH_FRESHNESS_UNSPECIFIED = 0;
+    HEALTH_FRESHNESS_FRESH       = 1;
+    HEALTH_FRESHNESS_STALE       = 2;  // beyond the policy's max sample age
+    HEALTH_FRESHNESS_ABSENT      = 3;  // no wearable data at all
+}
+
+// One safety trigger, or one impaired-monitoring observation. Immutable once
+// recorded: it is the record of something that happened to a physical machine.
+//
+// `sequence` is strictly monotonic per (client_id, edge_id) so a missing event
+// is DETECTABLE rather than invisible. Gaps are recorded, not forbidden — an
+// Edge that lost one must still be able to report the next.
+message SafetyEvent {
+    string safety_event_id           = 1;
+    uint64 sequence                  = 2;   // strictly monotonic per edge
+    string client_id                 = 3;
+    string edge_id                   = 4;
+    string device_chip_id            = 5;
+    string therapy_session_id        = 6;
+    SafetyTriggerSource source       = 7;
+    // Set iff source == CLOUD_RELAY. Barred for LOCAL_ENGINE events, which is
+    // how "local safety never depends on the cloud" is expressed structurally.
+    string relay_directive_id        = 8;
+
+    Salus.Health.HealthMetricKind metric = 9;
+    double breach_value              = 10;
+    string breached_rule             = 11;  // the SafetyPolicy rule/policy id
+    bytes  policy_hash               = 12;  // WHICH policy was in force
+    bool   monitoring_impaired       = 13;  // stale/quality-flagged input
+
+    SafetyStopOutcome outcome        = 14;
+    int32  ble_exchanges             = 15;  // stop cost, a latency proxy
+    int64  detected_at_us            = 16;  // Edge WallClock µs
+    int64  stop_completed_at_us      = 17;
+    int64  safe_state_verified_at_us = 18;  // required iff CONFIRMED_SAFE
+    int64  received_at_us            = 19;  // cloud WallClock µs on ingest
+}
+
+// How far a cloud-issued emergency stop got. SUPERSEDED_BY_LOCAL is a SUCCESS,
+// not a failure: it means the primary path got there first, which is the
+// intended behaviour of the whole design.
+enum RelayDeliveryState {
+    RELAY_DELIVERY_UNSPECIFIED = 0;
+    RELAY_PENDING              = 1;
+    RELAY_DISPATCHED           = 2;  // written to the Edge's control channel
+    RELAY_ACKNOWLEDGED         = 3;  // Edge confirmed it acted on this directive
+    RELAY_SUPERSEDED_BY_LOCAL  = 4;  // the local engine had already stopped
+    RELAY_EXPIRED              = 5;  // its window passed undelivered
+    RELAY_FAILED               = 6;
+}
+
+// A cloud-detected emergency stop, issued by Health analytics under a dedicated
+// service identity (§12). It carries the evidence that justified it, because a
+// stop nobody can explain afterwards is a stop nobody will trust next time.
+message SafetyRelayDirective {
+    string directive_id              = 1;
+    string client_id                 = 2;
+    string edge_id                   = 3;
+    string device_chip_id            = 4;
+    string therapy_session_id        = 5;   // the dedup key with local events
+    string issued_by                 = 6;   // service or operator subject
+    string authorized_scope          = 7;   // therapy.emergency_stop
+
+    Salus.Health.HealthMetricKind metric = 8;
+    double observed_value            = 9;
+    string reason                    = 10;
+    int64  evidence_sample_age_us    = 11;  // how fresh the deciding data was
+    HealthFreshnessState evidence_freshness = 12;
+
+    RelayDeliveryState delivery_state = 13;
+    // Set iff SUPERSEDED_BY_LOCAL — names the local event that got there first.
+    string superseded_by_event_id    = 14;
+    string failure_detail            = 15;
+    int64  issued_at_us              = 16;
+    int64  expires_at_us             = 17;
+    int64  dispatched_at_us          = 18;
+    int64  terminal_at_us            = 19;
+}
+
+// What the Edge reports about its own safety posture. Cloud never infers this:
+// an Edge whose wearable feed has gone quiet is exactly the Edge whose silence
+// must not be read as health.
+message ReportedSafetyState {
+    string client_id                 = 1;
+    string edge_id                   = 2;
+    string device_chip_id            = 3;
+    uint64 last_safety_event_sequence = 4;  // monotonic — cannot regress
+    SafetyStopOutcome last_outcome   = 5;
+    HealthFreshnessState freshness   = 6;
+    int64  last_sample_age_us        = 7;
+    // Must be true whenever freshness is not FRESH. The engine fails
+    // conservatively, and so must the report.
+    bool   monitoring_impaired       = 8;
+    bytes  active_policy_hash        = 9;
+    uint64 active_policy_revision    = 10;
+    bool   policy_verified           = 11;  // verified by recompute locally
+    bool   policy_active             = 12;  // requires policy_verified
+    bool   safety_engine_healthy     = 13;
+    int64  reported_at_us            = 14;  // Edge WallClock µs
+    int64  received_at_us            = 15;  // cloud WallClock µs
+}

@@ -1,0 +1,31 @@
+{
+  "name": "@salus-gui/proto",
+  "version": "0.1.2",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./gen/*": "./src/gen/*",
+    "./well-known": "./src/well-known.ts",
+    "./mutating": "./src/mutating.ts",
+    "./services": "./src/services.ts"
+  },
+  "scripts": {
+    "sync": "tsx ../../tools/sync-protos.ts",
+    "sync:check": "tsx ../../tools/sync-protos.ts --check",
+    "gen": "buf generate",
+    "postinstall": "buf generate",
+    "breaking": "buf breaking --against .buf-image-prev.binpb",
+    "build": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "^2.2.3"
+  },
+  "devDependencies": {
+    "@bufbuild/buf": "^1.47.2",
+    "@bufbuild/protoc-gen-es": "^2.2.3",
+    "fast-check": "^3.23.1",
+    "vitest": "^3.0.2"
+  }
+}

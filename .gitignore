@@ -36,3 +36,8 @@ apps/bridge/audit/
 
 # Bridge-local KV store (named workspaces, saved views)
 apps/bridge/kv/
+
+# generated proto codegen (rebuilt by `pnpm gen`; the proto package postinstall
+# runs it on a fresh checkout). The vendored .proto sources and the buf breaking
+# baseline image stay tracked — the baseline is recorded state, not derivable output.
+packages/proto/src/gen/

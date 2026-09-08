@@ -4,5 +4,5 @@
     "apps/web is deliberately absent and stays absent: SvelteKit generates its own tsconfig, and tsc does not read .svelte script blocks at all. That surface belongs to svelte-check (`pnpm check`, CI from v0.1.6)."
   ],
   "files": [],
-  "references": []
+  "references": [{ "path": "./packages/proto" }]
 }

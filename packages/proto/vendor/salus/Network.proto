@@ -1,0 +1,401 @@
+syntax = "proto3";
+
+package Salus.Network;
+
+import "Common.proto";
+import "Admin.proto";
+
+option cc_enable_arenas = true;
+
+// ===========================================================================
+// Network Service — centralised gRPC telemetry collector.
+//
+// Every Component opens a long-lived client-streaming connection to Network
+// at startup and pushes a NetworkDigest every --network-sample-ms (default
+// 1000 ms). Each digest carries period-deltas only — no cumulative state.
+// Network sums deltas and computes percentiles from summed latency-histogram
+// bin counts.
+//
+// Operators / dashboards / the test harness query Network with the unary
+// GetSuiteSnapshot for an aggregated view, or subscribe via StreamSuiteSnapshot
+// for live updates.
+//
+// Reset is centralised — the operator clears Network's aggregator state
+// either globally or per-component. Components are unaware of the reset
+// (they keep pushing forward-deltas).
+// ===========================================================================
+service Network {
+    // Component → Network push stream of per-period digests. The server
+    // returns a single Ack when the stream closes. One stream per Component.
+    rpc PushNetworkStats(stream NetworkDigest) returns (Ack);
+
+    // Operator / harness → Network: aggregated snapshot across all
+    // components Network has heard from. Reset-and-return supported via
+    // GetSuiteSnapshotRequest.reset.
+    rpc GetSuiteSnapshot(GetSuiteSnapshotRequest) returns (SuiteSnapshot);
+
+    // Live-dashboard subscription. Network emits one SuiteSnapshot every
+    // aggregator-period (the longest sample-ms seen across pushed digests).
+    rpc StreamSuiteSnapshot(StreamSuiteSnapshotRequest) returns (stream SuiteSnapshot);
+
+    // Clear aggregator state. Empty component_name = global reset.
+    rpc Reset(ResetRequest) returns (Salus.Common.Empty);
+
+    // --- Service registration ---
+
+    // Services register on startup; re-register on stream disconnect.
+    rpc Register(RegisterRequest) returns (RegisterResponse);
+
+    // Services deregister on clean shutdown.
+    rpc Deregister(DeregisterRequest) returns (DeregisterResponse);
+
+    // Returns the full service registry with per-service status.
+    rpc GetRegistryStatus(Salus.Common.Empty) returns (RegistryStatusResponse);
+
+    // Stream lifecycle events (service started, stopped, errors).
+    rpc StreamLifecycleEvents(Salus.Common.Empty) returns (stream LifecycleEvent);
+
+    // --- Aggregate admin queries ---
+
+    // Query status of all registered services.
+    rpc GetAllStatus(Salus.Common.Empty) returns (AllStatusResponse);
+
+    // Query metrics of all registered services.
+    rpc GetAllMetrics(Salus.Common.Empty) returns (AllMetricsResponse);
+
+    // --- Aggregate admin commands ---
+
+    // Drain all registered services.
+    rpc DrainAll(Salus.Admin.DrainRequest) returns (DrainAllResponse);
+
+    // Shutdown all registered services.
+    rpc ShutdownAll(Salus.Common.Empty) returns (ShutdownAllResponse);
+
+    // --- Log aggregation ---
+
+    // Subscribe to aggregated logs from all registered services.
+    // Each entry is enriched by Network with the source service_name +
+    // admin_address + received_at_us so dashboards can filter / re-colour
+    // per service.  The underlying per-service Admin.LogEntry's structured
+    // fields (level, label, message, timestamp_us) are forwarded verbatim.
+    rpc StreamLogs(Salus.Common.Empty) returns (stream AggregatedLogEntry);
+}
+
+// ---------------------------------------------------------------------------
+// RpcKind — closed catalog matching the gRPC method shape. Rehomed from
+// Admin.proto (the old GetNetworkStats RPC has been removed).
+// ---------------------------------------------------------------------------
+enum RpcKind {
+    RPC_KIND_UNSPECIFIED    = 0;
+    RPC_KIND_UNARY          = 1;
+    RPC_KIND_STREAMING_SEND = 2;  // server-streaming from server's POV
+    RPC_KIND_STREAMING_RECV = 3;  // client-streaming from server's POV
+    RPC_KIND_STREAMING_BIDI = 4;
+}
+
+// ---------------------------------------------------------------------------
+// Direction — server-side (inbound RPC the Component received) vs client-side
+// (outbound RPC the Component issued).
+// ---------------------------------------------------------------------------
+enum Direction {
+    DIRECTION_UNSPECIFIED   = 0;
+    DIRECTION_INBOUND       = 1;
+    DIRECTION_OUTBOUND      = 2;
+}
+
+// ---------------------------------------------------------------------------
+// NetworkRow — one (direction, method) row's deltas for a single period.
+// Latency histogram is encoded as 24 power-of-two bin counts:
+//   bin 0 covers [0, 2) µs
+//   bin i covers [2^i, 2^(i+1)) µs for 1 <= i <= 22
+//   bin 23 absorbs everything >= 2^23 µs (8.4 s)
+// ---------------------------------------------------------------------------
+message NetworkRow {
+    string      name                    = 1;
+    RpcKind     kind                    = 2;
+    Direction   direction               = 3;
+
+    // Period deltas — what happened in the [period_start_us, period_end_us)
+    // window. Network accumulates these into cumulative totals.
+    uint64      bytes_in_delta          = 10;
+    uint64      bytes_out_delta         = 11;
+    uint64      calls_delta             = 12;
+    uint64      msgs_in_delta           = 13;
+    uint64      msgs_out_delta          = 14;
+
+    // 24 power-of-two latency histogram bin counts for the period.
+    repeated uint64 latency_bins        = 20;
+
+    // 17 gRPC status code counts (StatusCode 0..16) for the period.
+    repeated uint64 status_code_counts  = 21;
+
+    // Period-scoped min/max — useful as instantaneous bounds.
+    uint64      msg_size_in_min         = 30;
+    uint64      msg_size_in_max         = 31;
+    uint64      msg_size_out_min        = 32;
+    uint64      msg_size_out_max        = 33;
+
+    // Gauges sampled at period end.
+    int32       inflight_current        = 40;
+    int32       inflight_max_in_period  = 41;
+}
+
+// ---------------------------------------------------------------------------
+// NetworkDigest — one push from a Component to Network.
+//
+// digest_seq is monotonic per-stream. Network uses it to detect dropped
+// digests (publisher ring-buffer overflow during a Network outage); on
+// gap, Network logs a warning and continues aggregation from the new seq.
+//
+// component is a closed-catalog string — Network rejects unknown component
+// names with a logged warning rather than aggregating arbitrary input.
+// ---------------------------------------------------------------------------
+message NetworkDigest {
+    string                  component       = 1;
+    uint64                  digest_seq      = 2;
+    int64                   period_start_us = 3;
+    int64                   period_end_us   = 4;
+    int64                   wall_clock_us   = 5;
+    repeated NetworkRow     rows            = 10;
+}
+
+// ---------------------------------------------------------------------------
+// Ack — closing reply for the PushNetworkStats client-streaming RPC.
+// ---------------------------------------------------------------------------
+message Ack {
+    uint64  digests_received    = 1;
+    uint64  digests_dropped     = 2;  // count of gap-detected drops
+}
+
+// ---------------------------------------------------------------------------
+// AggregatedRow — Network's cumulative view of one (component, direction,
+// method) keyed row. Percentiles are computed by NetworkAggregator from the
+// summed bin counts using logarithmic within-bin interpolation.
+// ---------------------------------------------------------------------------
+message AggregatedRow {
+    string      component               = 1;
+    string      name                    = 2;
+    RpcKind     kind                    = 3;
+    Direction   direction               = 4;
+
+    // Cumulative since stream start / last reset.
+    uint64      bytes_in_total          = 10;
+    uint64      bytes_out_total         = 11;
+    uint64      calls_total             = 12;
+    uint64      msgs_in_total           = 13;
+    uint64      msgs_out_total          = 14;
+
+    // Rates derived from the last period's deltas (1 s window aligned
+    // to the publisher's sample-ms) and the trailing 60 periods (60 s
+    // window for default 1 Hz).
+    double      bps_in_1s               = 20;
+    double      bps_out_1s              = 21;
+    double      bps_in_60s              = 22;
+    double      bps_out_60s             = 23;
+    double      bps_in_peak             = 24;
+    double      bps_out_peak            = 25;
+
+    // Percentiles computed from cumulative latency bin counts.
+    uint32      latency_p50_us          = 30;
+    uint32      latency_p95_us          = 31;
+    uint32      latency_p99_us          = 32;
+    uint64      latency_min_us          = 33;
+    uint64      latency_max_us          = 34;
+
+    // Message-streaming msg/s (1 s window) — non-zero only for streaming
+    // RPCs.
+    double      msg_rate_1s             = 40;
+
+    // Observed extremes over the cumulative window.
+    uint64      msg_size_in_max         = 50;
+    uint64      msg_size_out_max        = 51;
+    int32       inflight_max            = 52;
+
+    // Status code distribution — repeated uint64[17] keyed by grpc::StatusCode.
+    repeated uint64 status_code_counts  = 60;
+}
+
+// ---------------------------------------------------------------------------
+// ComponentSummary — header-level state for one component Network has heard
+// from.
+// ---------------------------------------------------------------------------
+message ComponentSummary {
+    string                  component       = 1;
+    uint64                  digests_received= 2;
+    uint64                  digests_dropped = 3;
+    int64                   last_digest_us  = 4;   // WallClock µs of most recent digest
+    uint64                  inbound_rows    = 5;
+    uint64                  outbound_rows   = 6;
+}
+
+// ---------------------------------------------------------------------------
+// SuiteSnapshot — aggregated view across every component Network knows
+// about. Returned by GetSuiteSnapshot; emitted periodically by
+// StreamSuiteSnapshot.
+// ---------------------------------------------------------------------------
+message SuiteSnapshot {
+    int64                       snapshot_at_us  = 1;
+    repeated ComponentSummary   components      = 2;
+    repeated AggregatedRow      rows            = 3;
+}
+
+// ---------------------------------------------------------------------------
+// GetSuiteSnapshotRequest — optional reset-after-return.
+// ---------------------------------------------------------------------------
+message GetSuiteSnapshotRequest {
+    bool    reset_after_return = 1;
+}
+
+// ---------------------------------------------------------------------------
+// StreamSuiteSnapshotRequest — empty for v1; reserve for future filtering.
+// ---------------------------------------------------------------------------
+message StreamSuiteSnapshotRequest {
+}
+
+// ---------------------------------------------------------------------------
+// ResetRequest — empty component_name = global reset; otherwise clear only
+// the named component's rows.
+// ---------------------------------------------------------------------------
+message ResetRequest {
+    string  component_name = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Register / Deregister — service-registry messages.
+// Network's active-ping heartbeat manages per-service liveness.
+// ---------------------------------------------------------------------------
+message RegisterRequest {
+    string service_name  = 1;
+    string admin_address = 2; // host:port Network can reach this service on
+}
+
+message RegisterResponse {
+    bool   accepted = 1;
+    string message  = 2;
+}
+
+message DeregisterRequest {
+    string service_name = 1;
+}
+
+message DeregisterResponse {
+    bool   accepted = 1;
+    string message  = 2;
+}
+
+// ---------------------------------------------------------------------------
+// RegistryEntry — per-service registry row returned by GetRegistryStatus.
+// ---------------------------------------------------------------------------
+message RegistryEntry {
+    string                      service_name    = 1;
+    string                      admin_address   = 2;
+    Salus.Common.ServiceStatus   status          = 3;
+    bool                        connected       = 4;
+    int32                       fail_count      = 5;
+    Salus.Common.Timestamp       last_seen       = 6;
+    // The edge-authenticated identity that registered this service: the
+    // JWT `sub` claim Envoy forwards as the `x-user-id` header on the
+    // Register call. "(unauthenticated)" when registration did not pass
+    // through the JWT-enforcing edge.
+    string                      authenticated_subject = 7;
+}
+
+message RegistryStatusResponse {
+    int32                   registered      = 1;
+    repeated RegistryEntry  entries         = 2;
+}
+
+// ---------------------------------------------------------------------------
+// LifecycleEvent — emitted on register / deregister / heartbeat eviction.
+// ---------------------------------------------------------------------------
+message LifecycleEvent {
+    Salus.Common.Timestamp       timestamp       = 1;
+    string                      service_name    = 2;
+    string                      event_type      = 3; // "started", "stopped", "error", "reconnected"
+    string                      message         = 4;
+    Salus.Common.ServiceStatus   status          = 5;
+    uint64                      seq             = 6; // Network-side monotonic
+                                                     // sequence; a reconnecting
+                                                     // subscriber sends the last
+                                                     // it saw via
+                                                     // "salus-lifecycle-since-seq"
+                                                     // metadata to resume without
+                                                     // duplicate replay.
+}
+
+// ---------------------------------------------------------------------------
+// AllStatus / AllMetrics — aggregate admin query responses.
+// Each entry wraps the underlying Admin RPC response
+// keyed by service name + admin address.
+// ---------------------------------------------------------------------------
+message ServiceStatusEntry {
+    string                       service_name   = 1;
+    string                       admin_address  = 2;
+    Salus.Admin.StatusResponse    status         = 3;
+}
+
+message AllStatusResponse {
+    repeated ServiceStatusEntry entries = 1;
+}
+
+message ServiceMetricsEntry {
+    string                       service_name   = 1;
+    string                       admin_address  = 2;
+    Salus.Admin.MetricsResponse   metrics        = 3;
+}
+
+message AllMetricsResponse {
+    repeated ServiceMetricsEntry entries = 1;
+}
+
+// ---------------------------------------------------------------------------
+// DrainAll / ShutdownAll — aggregate admin command responses.
+// Each entry wraps the underlying Admin RPC response
+// keyed by service name + admin address.
+// ---------------------------------------------------------------------------
+message ServiceDrainEntry {
+    string                       service_name   = 1;
+    string                       admin_address  = 2;
+    Salus.Admin.DrainResponse     drain          = 3;
+}
+
+message DrainAllResponse {
+    repeated ServiceDrainEntry entries = 1;
+}
+
+message ServiceShutdownEntry {
+    string                       service_name    = 1;
+    string                       admin_address   = 2;
+    Salus.Admin.ShutdownResponse  shutdown        = 3;
+}
+
+message ShutdownAllResponse {
+    repeated ServiceShutdownEntry entries = 1;
+}
+
+// ---------------------------------------------------------------------------
+// AggregatedLogEntry — one log line forwarded by Network's StreamLogs.
+//
+// The producing service emits structured Admin.LogEntry rows via its own
+// Admin.StreamLogs RPC.  Network's per-service forwarder enriches each
+// entry with the registry-side identity (service_name, admin_address) and
+// a Network-side receive timestamp before fanning out to subscribers.
+//
+// No ANSI escape codes ever appear in any field — colour is a presentation
+// concern that consumers re-apply locally using `level` and `service_name`.
+// ---------------------------------------------------------------------------
+message AggregatedLogEntry {
+    string              service_name    = 1;   // registry key (e.g. "Session")
+    string              admin_address   = 2;   // host:port of producer
+    int64               received_at_us  = 3;   // when Network forwarded it
+    int64               timestamp_us    = 4;   // producer's WallClock µs
+    Salus.Admin.LogLevel level           = 5;
+    string              label           = 6;   // producer's log label
+    string              message         = 7;   // body only (no ANSI, no prefix)
+    uint64              seq             = 8;   // Network-side monotonic aggregate
+                                               // sequence. A dashboard tracks the
+                                               // max it saw and, on reconnect,
+                                               // sends it via "salus-log-since-seq"
+                                               // metadata so the replay ring
+                                               // returns only newer lines.
+}

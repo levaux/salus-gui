@@ -1,0 +1,201 @@
+syntax = "proto3";
+
+package Salus.Session;
+
+import "Common.proto";
+
+option cc_enable_arenas = true;
+
+// ===========================================================================
+// Session Service — the public-client lifecycle authority + ejection point.
+//
+// Public-side clients (the far side of the Envoy edge) do NOT register with
+// the Network service — that plane is for private infrastructure services.
+// Instead, every authenticated client gets a *session* here, keyed by the
+// unique `jti` claim of the token Authentication minted for it. The session
+// records when the client connected, when its key expires, when it was last
+// heard from, and how many requests it has made.
+//
+// Two things populate the table:
+//   1. Authentication calls OpenSession the moment it mints a token (so the
+//      roster is complete before the client's first request), and
+//   2. the Envoy ext_authz hook lazily reconstructs a session from the token
+//      claims the first time it sees a `jti` it doesn't know.
+//
+// The edge calls this service (over a sidecar HTTP ext_authz endpoint, not
+// gRPC) on every gated request; a session that has been ejected — or has
+// expired — is denied, so EjectSession is how an operator cuts a client off
+// from the whole system in real time, before its token would naturally expire.
+// ===========================================================================
+service Session {
+    // Record (or refresh) a session for a freshly-minted token. Idempotent and
+    // keyed by `jti` — Authentication calls this on every successful mint.
+    rpc OpenSession(OpenSessionRequest) returns (OpenSessionResponse);
+
+    // Eject a client: revoke one session (by `jti`) or every live session for
+    // a subject. The next ext_authz check for those tokens is denied.
+    rpc EjectSession(EjectSessionRequest) returns (EjectSessionResponse);
+
+    // List sessions for observability (the harness renders the Sessions table).
+    rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
+
+    // Look up a single session by `jti`.
+    rpc GetSession(GetSessionRequest) returns (SessionInfo);
+
+    // ---- Edge installation binding + device presence (v0.5.x) --------------
+    // These are the data-plane identity surface. For the client-scoped RPCs
+    // (Bind/GetEdgeBinding/ReportPresence) the caller reaches Session THROUGH
+    // the Envoy edge, so `client_id` is taken from the validated JWT header
+    // (`x-user-id`) — never from the request body; `edge_id` is in the body and
+    // validated against the installation binding. The observability reads
+    // (ListPresence/GetPresence) are direct calls that name client_id in the
+    // request, exactly like ListSessions/GetSession.
+
+    // Bind an Edge installation (`edge_id`) to the caller's client identity —
+    // the prerequisite for streaming, independent of device presence. One
+    // client_id → many edge_ids; an edge_id is globally unique to one client.
+    rpc BindEdgeInstallation(BindEdgeInstallationRequest) returns (BindEdgeInstallationResponse);
+
+    // The authorization lookup a stream enforces: is `edge_id` bound to the
+    // caller's client_id? Reports unbound / mismatched. Off the ext_authz hot path.
+    rpc GetEdgeBinding(GetEdgeBindingRequest) returns (GetEdgeBindingResponse);
+
+    // Report the attached-device roster for one installation (client-scoped).
+    rpc ReportPresence(ReportPresenceRequest) returns (ReportPresenceResponse);
+
+    // Observability: list presence records (optionally filtered by client_id).
+    rpc ListPresence(ListPresenceRequest) returns (ListPresenceResponse);
+
+    // Observability: one installation's presence by (client_id, edge_id).
+    rpc GetPresence(GetPresenceRequest) returns (DevicePresence);
+}
+
+// ---------------------------------------------------------------------------
+// OpenSessionRequest — Authentication's mint-time notification.
+//   subject     — the token's `sub` claim (the client_id / UUID).
+//   jti         — the token's unique id; the session key.
+//   issued_at   — the token's `iat`, Unix epoch seconds ("connected since").
+//   expires_at  — the token's `exp`, Unix epoch seconds ("key timeout").
+//   scopes      — the granted scopes carried by the token.
+// ---------------------------------------------------------------------------
+message OpenSessionRequest {
+    string          subject    = 1;
+    string          jti        = 2;
+    int64           issued_at  = 3;
+    int64           expires_at = 4;
+    repeated string scopes     = 5;
+}
+
+message OpenSessionResponse {
+    bool   accepted = 1;
+    string message  = 2;
+}
+
+// ---------------------------------------------------------------------------
+// EjectSessionRequest — cut a client off.
+//   target — eject every live session for a `subject`, or one specific `jti`.
+//   reason — operator note, recorded on the revoked session(s).
+// ---------------------------------------------------------------------------
+message EjectSessionRequest {
+    oneof target {
+        string subject = 1;   // revoke ALL live sessions for this client
+        string jti     = 2;   // revoke this one token's session
+    }
+    string reason = 3;
+}
+
+message EjectSessionResponse {
+    bool   ejected          = 1;
+    int32  sessions_revoked = 2;   // how many sessions were revoked
+    string message          = 3;
+}
+
+// ---------------------------------------------------------------------------
+// SessionInfo — one tracked client session.
+// ---------------------------------------------------------------------------
+message SessionInfo {
+    string                      subject       = 1;
+    string                      jti           = 2;
+    int64                       connected_at  = 3;   // first seen / iat — "connected since"
+    int64                       expires_at    = 4;   // token exp        — "key timeout"
+    int64                       last_heard    = 5;   // last ext_authz check — "last heard"
+    uint64                      request_count = 6;   // gated requests seen at the edge
+    bool                        revoked       = 7;   // ejected by an operator
+    int64                       revoked_at    = 8;   // when it was ejected (epoch seconds)
+    repeated string             scopes        = 9;
+    Salus.Common.ServiceStatus  status        = 10;  // RUNNING (active) / STOPPED (expired) / ERROR (ejected)
+}
+
+// ---------------------------------------------------------------------------
+// ListSessions — observability dump.
+//   include_closed — also return expired / ejected sessions (default: live only).
+// ---------------------------------------------------------------------------
+message ListSessionsRequest {
+    bool include_closed = 1;
+}
+
+message ListSessionsResponse {
+    repeated SessionInfo sessions = 1;
+}
+
+message GetSessionRequest {
+    string jti = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Edge installation binding + device presence.
+//   client_id on the client-scoped requests is DELIBERATELY absent — it is
+//   bound from the validated JWT header at the service boundary, never trusted
+//   from the payload.
+// ---------------------------------------------------------------------------
+
+message BindEdgeInstallationRequest {
+    string edge_id = 1;   // client_id comes from the JWT header, not here
+}
+
+message BindEdgeInstallationResponse {
+    bool   bound   = 1;
+    string message = 2;
+}
+
+message GetEdgeBindingRequest {
+    string edge_id = 1;   // client_id from the JWT header
+}
+
+message GetEdgeBindingResponse {
+    bool            bound    = 1;   // is THIS edge_id bound to the caller's client_id?
+    repeated string edge_ids = 2;   // every edge_id bound to the caller's client_id
+    string          message  = 3;
+}
+
+message ReportPresenceRequest {
+    string                               edge_id = 1;   // client_id from the JWT header
+    repeated Salus.Common.AttachedDevice devices = 2;
+}
+
+message ReportPresenceResponse {
+    bool   accepted = 1;
+    string message  = 2;
+}
+
+// DevicePresence — one installation's current roster.
+message DevicePresence {
+    string                               client_id  = 1;
+    string                               edge_id    = 2;
+    repeated Salus.Common.AttachedDevice devices    = 3;
+    int64                                updated_at = 4;   // Unix epoch seconds
+}
+
+// ListPresence — observability dump; empty client_id lists every installation.
+message ListPresenceRequest {
+    string client_id = 1;
+}
+
+message ListPresenceResponse {
+    repeated DevicePresence presence = 1;
+}
+
+message GetPresenceRequest {
+    string client_id = 1;
+    string edge_id   = 2;
+}

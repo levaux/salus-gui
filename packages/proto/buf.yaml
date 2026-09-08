@@ -1,0 +1,14 @@
+version: v2
+modules:
+  # The vendored protos import each other by bare filename (import "Common.proto"),
+  # so the module root must be the directory that directly contains them.
+  - path: vendor/salus
+lint:
+  use:
+    - STANDARD
+  # Vendored upstream protos — we do not lint the platform's style, only track
+  # drift against the commit lock.
+  disallow_comment_ignores: false
+breaking:
+  use:
+    - WIRE_JSON

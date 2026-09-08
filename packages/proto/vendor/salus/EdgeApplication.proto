@@ -1,0 +1,93 @@
+syntax = "proto3";
+
+package Salus.EdgeApplication;
+
+import "Protocol.proto";
+
+option cc_enable_arenas = true;
+
+// ===========================================================================
+// EdgeApplication — the Edge's LOOPBACK application-control surface (v0.5.13).
+//
+// This is the boundary a future mobile UI shell calls (decision: headless
+// application control). It is served by the Edge process itself on its own
+// Component port and is NEVER routed through the public Envoy gateway — tests
+// (EdgeTestDriver) and, later, the in-process Objective-C++/JNI bridge drive
+// the same production workflow: list due routines, start one (compile ->
+// validate -> execute), skip, observe state. A driver cannot manufacture a
+// session, mark a routine complete, or bypass validation — it only requests
+// the same semantic actions a user could.
+// ===========================================================================
+
+// One due (or upcoming) routine instance from the local vault schedule.
+message DueRoutine {
+    string                  routine_instance_id = 1;
+    string                  assignment_id       = 2;
+    string                  revision_id         = 3;
+    uint32                  day_number          = 4;
+    Salus.Protocol.TimeOfDay time_of_day        = 5;
+    int64                   scheduled_for_us    = 6;
+    Salus.Protocol.ProgressStatus status        = 7;
+}
+
+message ListDueRoutinesRequest {
+    // 0 = "now" (the Edge's clock); tests pass a virtual instant.
+    int64 as_of_us = 1;
+    // Include instances not yet due (the full remaining schedule) when true.
+    bool  include_upcoming = 2;
+}
+message ListDueRoutinesResponse {
+    repeated DueRoutine routines = 1;
+}
+
+// One compiled, validated, simulated-executed step outcome.
+message StepOutcome {
+    uint32                       order_index = 1;
+    Salus.Protocol.Modality      modality    = 2;
+    Salus.Protocol.ProgressStatus status     = 3;
+    string                       detail      = 4;   // e.g. "HBOT 1.3 ATA 60min" or a block reason
+}
+
+enum StartDisposition {
+    START_UNSPECIFIED  = 0;
+    STARTED_COMPLETED  = 1;   // compiled, executed (simulated), completed
+    ALREADY_DONE       = 2;   // idempotent retry — the routine was already terminal
+    BLOCKED            = 3;   // compile/validation refused (reason in message)
+    NOT_FOUND          = 4;   // no such routine instance
+}
+
+message StartRoutineRequest {
+    string routine_instance_id = 1;
+}
+message StartRoutineResponse {
+    StartDisposition     disposition = 1;
+    string               message     = 2;
+    string               therapy_session_id = 3;   // minted per execution
+    repeated StepOutcome steps       = 4;
+}
+
+message SkipRoutineRequest {
+    string routine_instance_id = 1;
+    string reason              = 2;
+}
+message SkipRoutineResponse {
+    bool skipped = 1;
+    string message = 2;
+}
+
+message ApplicationStateRequest {}
+message ApplicationState {
+    string active_assignment_id = 1;
+    string active_revision_id   = 2;
+    uint32 planned_routines     = 3;
+    uint32 completed_routines   = 4;
+    uint32 skipped_routines     = 5;
+    int64  materialized_through_day = 6;
+}
+
+service EdgeApplication {
+    rpc ListDueRoutines(ListDueRoutinesRequest) returns (ListDueRoutinesResponse);
+    rpc StartRoutine(StartRoutineRequest) returns (StartRoutineResponse);
+    rpc SkipRoutine(SkipRoutineRequest) returns (SkipRoutineResponse);
+    rpc GetApplicationState(ApplicationStateRequest) returns (ApplicationState);
+}

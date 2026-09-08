@@ -13,7 +13,6 @@
       "Bash(curl:*)",
       "Bash(echo:*)",
       "Bash(gh:*)",
-      "Bash(git push:*)",
       "Bash(git tag:*)",
       "Bash(git merge:*)",
       "Bash(node:*)",
@@ -48,6 +47,7 @@
       "WebFetch(domain:developer.mozilla.org)"
     ],
     "ask": [
+      "Bash(git push:*)",
       "Bash(git reset --hard:*)",
       "Bash(git clean:*)"
     ],
@@ -62,5 +62,31 @@
     "commit": "",
     "pr": ""
   },
-  "fileCheckpointingEnabled": true
+  "fileCheckpointingEnabled": true,
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "input=$(cat); cmd=$(jq -r '.tool_input.command' <<<\"$input\"); bg=$(jq -r '.tool_input.run_in_background // false' <<<\"$input\"); [ \"$bg\" = \"true\" ] && exit 0; echo \"$cmd\" | grep -Eq '(^|[[:space:]])pnpm([[:space:]]+[^|;&]*)?[[:space:]]dev(:[[:graph:]]*)?([[:space:]]|$)|(^|[[:space:]])vite[[:space:]]*$|(^|[[:space:]])vite[[:space:]]+(dev|preview)([[:space:]]|$)|(^|[[:space:]])tsx[[:space:]]+watch([[:space:]]|$)' || exit 0; printf '%s' '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Dev servers never exit — a foreground pnpm dev*/vite/tsx watch through the Bash tool hangs the turn (CLAUDE.md Build & Dev). Run it with run_in_background, or in a real terminal.\"}}'"
+          }
+        ]
+      }
+    ]
+  },
+  "autoMode": {
+    "allow": [
+      "$defaults",
+      "Bash(pnpm *) — the workspace toolchain: install, codegen, lint, typecheck, vitest, builds (foreground dev servers are denied by the PreToolUse hook; backgrounded ones pass)",
+      "Bash(node *), Bash(npm *), Bash(npx *), Bash(corepack *) — Node tooling around pnpm",
+      "Bash(python3 *) — the stdlib-only plans tooling (tools/plans.py, tools/check-plans.py)",
+      "Bash(git add *), Bash(git commit *), Bash(git rm *), Bash(git mv *), Bash(git tag *) — local repo mutations only; push stays gated in permissions.ask, and commits additionally require Simon's per-instance approval as a working rule",
+      "Bash(./tools/*), Bash(./scripts/*) — repo helpers (plans register + lint; later the proto sync tool)",
+      "Bash(mkdir *), Bash(cp *), Bash(mv *), Bash(touch *), Bash(chmod *) — workspace file plumbing",
+      "Bash(kill *) — reaping orphaned dev/test processes found via lsof",
+      "Bash(curl *) — local bridge/backend endpoint probes (Envoy admin /ready, JWKS)"
+    ]
+  }
 }

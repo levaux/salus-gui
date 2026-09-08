@@ -12,6 +12,9 @@ build/
 test-results/
 coverage/
 
+# tooling
+__pycache__/
+
 # bridge runtime state
 apps/bridge/data/
 apps/bridge/certs/

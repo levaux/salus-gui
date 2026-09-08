@@ -1,12 +1,22 @@
-# Project Configuration
+# salus-gui — agent instructions
 
-## Project Overview
+**Read this as rules and pointers, not as reference.** Everything here is loaded into every session before I see your request, so it holds only what changes what I *do*. What each package, app and panel *is* lives in the README beside its code (as the scaffold lands — until then the target tables below carry the intent); *why* it is that way lives in [docs/plans/](docs/plans/) and [docs/commit-history.md](docs/commit-history.md).
 
-- **Name**: salus-gui
-- **Tech Stack**: TypeScript, SvelteKit 2 + Svelte 5 (runes), Connect (connect-es) ⇄ gRPC, buf + protoc-gen-es codegen, pnpm workspaces, vitest, Node ≥ 22
-- **Purpose**: The web operations console for the **Salus** platform — a dashboard for running the regression-test harness, operational control of the service fleet, and simulation/experimentation against the Edge application and the services. Built first as a development/test instrument, it carries forward as the operations-management console once the Salus platform is deployed.
+- **Stack**: TypeScript, SvelteKit 2 + Svelte 5 (runes), Connect (connect-es) ⇄ gRPC, buf + protoc-gen-es codegen, pnpm workspaces, vitest, Node ≥ 22.
+- **Purpose**: the web operations console for the **Salus** platform — a dashboard for running the regression-test harness, operational control of the service fleet, and simulation/experimentation against the Edge application and the services. Built first as a development/test instrument, it carries forward as the operations-management console once the Salus platform is deployed.
+- **Backend**: the sibling repo at `../salus` (C++17, gRPC, six services + the Edge client, an Envoy edge, a Python test harness). This repo never links against it — it vendors its protos at a pinned commit and speaks to it over the wire.
 
-The Salus backend lives in the sibling repo at `../salus` (C++17, gRPC, six services + the Edge client, an Envoy edge, a Python test harness). This repo never links against it — it vendors its protos at a pinned commit and speaks to it over the wire.
+## Repository map
+
+| Path | What is there |
+|---|---|
+| `docs/` | reference for **built state** only — see [docs/README.md](docs/README.md) |
+| `docs/plans/` | the work lifecycle: `backlog/` → `NNN-*.md` → `completed/`; register in [INDEX.md](docs/plans/INDEX.md) |
+| `docs/commit-history.md` | the release ledger |
+| `research/` | open questions, not committed to — see [research/README.md](research/README.md) |
+| `tools/` | stdlib-only repo tooling (`plans.py`, `check-plans.py`; the proto sync tool arrives with the scaffold) |
+| `.claude/` | agent settings, hooks and commands |
+| `packages/`, `apps/` | the pnpm workspace — arrives with [salus-gui-repo.md](docs/plans/backlog/salus-gui-repo.md), each package/app carrying its own README |
 
 ## Architecture (target — see the plans)
 
@@ -67,12 +77,17 @@ pnpm test             # vitest across packages and apps — the single test tier
 pnpm lint && pnpm typecheck && pnpm build
 ```
 
-- **Never run dev servers (`pnpm dev*`) as foreground agent commands** — they don't exit. Use a background task or a real terminal.
+- **Never run dev servers (`pnpm dev*`, `vite`, `tsx watch`) as foreground agent commands** — they don't exit, so a foreground call hangs the turn. Use a background task or a real terminal. A `PreToolUse` hook in [.claude/settings.json](.claude/settings.json) **denies** the foreground form mechanically and allows the backgrounded one.
 - Proto vendoring: `pnpm sync-protos` copies `../salus/src/proto/Salus/*.proto` into `packages/proto/vendor/salus/` and pins the source commit in `packages/proto/salus-commit.lock`; `pnpm sync-protos:check` is the CI drift gate; `buf breaking` against the committed baseline image is the wire-compat gate.
 
 ## Testing
 
 One tier: `pnpm test` runs vitest across every package and app. `mock-salus` serves a deterministic double of every service the console consumes, so the entire app runs offline and the same code connects to the real fleet unchanged. Browser-only behaviours are verified manually against `pnpm dev:stack:mock`.
+
+## Standing Rules
+
+- **Measured ROI before architectural change.** No framework swaps, state-management libraries, grid/dock replacements or build-tool changes without a *measured* problem. "Defer" and "don't bother" are valid recommendations.
+- **A committed rule with no gate drifts silently.** Every convention gets a hook, a lint rule, or a drift test (the plans register has `tools/check-plans.py`; the no-attribution rule has the settings `attribution` block; the dev-server rule has the PreToolUse hook). When adding a rule, name its gate — or record explicitly that it has none yet, so the gap is a decision rather than an accident.
 
 ## Git Workflow
 
@@ -126,6 +141,10 @@ Every transition is **edit the INDEX row, then run the tool.** Never move a plan
 
 The full ritual, step by step, is in [docs/plans/INDEX.md](docs/plans/INDEX.md#how-to-update-this-file).
 
+### Where a document belongs
+
+`docs/` is **reference for built state only** — the test is *is it built?* A plan is a stage ladder and goes to `docs/plans/backlog/`; an open question goes to [research/](research/) and is promoted into the backlog when it resolves into something worth building. Mixed documents leave `docs/`: a file that is partly forward-looking splits, the shipped-state half staying and the proposal half becoming a backlog plan or a research note.
+
 ### Active Plans
 
 Nothing running yet. The two founding plans sit in the backlog, intended for promotion in this order:
@@ -135,7 +154,7 @@ Nothing running yet. The two founding plans sit in the backlog, intended for pro
 
 ## Permissions & Tooling (agent)
 
-[.claude/settings.json](.claude/settings.json) allowlists the commands this workflow needs. **Allowlisted**: `git` (incl. push/tag/merge), `node`/`corepack`/`pnpm`/`npm`/`npx`, `python3` (the stdlib-only plans tooling), `curl`/`jq`/`rg`/`grep`/`find`, `gh`, file plumbing (`mkdir`/`cp`/`mv`/`touch`/`chmod`), `lsof`/`kill` (reaping orphaned dev processes), and the repo helpers `./scripts/*` + `./tools/*` (`tools/plans.py`, `tools/check-plans.py`). **Gated** (`ask`): `git reset --hard`, `git clean`. **Denied**: `rm -rf`, `git push --force`.
+[.claude/settings.json](.claude/settings.json) allowlists the commands this workflow needs. **Allowlisted**: `git` (incl. tag/merge), `node`/`corepack`/`pnpm`/`npm`/`npx`, `python3` (the stdlib-only plans tooling), `curl`/`jq`/`rg`/`grep`/`find`, `gh`, file plumbing (`mkdir`/`cp`/`mv`/`touch`/`chmod`), `lsof`/`kill` (reaping orphaned dev processes), and the repo helpers `./scripts/*` + `./tools/*` (`tools/plans.py`, `tools/check-plans.py`). **Gated** (`ask`): `git push`, `git reset --hard`, `git clean`. **Denied**: `rm -rf`, `git push --force`, and foreground dev servers via the `PreToolUse` hook (Build & Dev above). The `autoMode.allow` block documents, entry by entry, why each command family is safe to run unprompted.
 
 The `attribution` block is set to empty (`commit: ""`, `pr: ""`) — it enforces the **no `Co-Authored-By`** rule above mechanically.
 

@@ -1,6 +1,6 @@
 # salus-gui — agent instructions
 
-**Read this as rules and pointers, not as reference.** Everything here is loaded into every session before I see your request, so it holds only what changes what I _do_. What each package, app and panel _is_ lives in the README beside its code (as the scaffold lands — until then the target tables below carry the intent); _why_ it is that way lives in [docs/plans/](docs/plans/) and [docs/commit-history.md](docs/commit-history.md).
+**Read this as rules and pointers, not as reference.** Everything here is loaded into every session before I see your request, so it holds only what changes what I _do_. What each package, app and panel _is_ lives in the README beside its code; _why_ it is that way lives in [docs/plans/](docs/plans/) and [docs/commit-history.md](docs/commit-history.md). Getting it running is [docs/dev-setup.md](docs/dev-setup.md).
 
 - **Stack**: TypeScript, SvelteKit 2 + Svelte 5 (runes), Connect (connect-es) ⇄ gRPC, buf + protoc-gen-es codegen, pnpm workspaces, vitest, Node ≥ 22.
 - **Purpose**: the web operations console for the **Salus** platform — a dashboard for running the regression-test harness, operational control of the service fleet, and simulation/experimentation against the Edge application and the services. Built first as a development/test instrument, it carries forward as the operations-management console once the Salus platform is deployed.
@@ -17,19 +17,19 @@
 | `design/`                | intent reference — the design mocks a plan executes against; not built state — see [design/harness-control-gui/README.md](design/harness-control-gui/README.md) |
 | `tools/`                 | repo tooling (`plans.py`, `check-plans.py` — stdlib-only Python; `sync-protos.ts`)                                                                              |
 | `.claude/`               | agent settings, hooks and commands                                                                                                                              |
-| `packages/`, `apps/`     | the pnpm workspace — arrives with [salus-gui-repo.md](docs/plans/001-salus-gui-repo.md), each package/app carrying its own README                               |
+| `packages/`, `apps/`     | the pnpm workspace — five packages, two apps, each carrying its own README                                                                                      |
 
-## Architecture (target — see the plans)
+## Architecture
 
 The browser talks to exactly one process — the **bridge** (`salus-bridged`, `:56400`) — over one h2/TLS connection:
 
-| Browser wants                   | Bridge path                      | Backing surface                         |
-| ------------------------------- | -------------------------------- | --------------------------------------- |
-| Unary + server-stream RPC       | `/rpc` Connect ⇄ gRPC forward    | the Salus gRPC service fleet            |
-| Suite runs, live harness output | `/harness` runner endpoints      | `../salus/test/run_all.py` subprocesses |
-| Stack lifecycle (envoy, db)     | `/infra` control endpoints       | `../salus/infra/*/{up,down,status}.sh`  |
-| Named workspaces, saved views   | `/kv` file-backed document store | bridge-local state                      |
-| Audit log, read-only mode       | `/bridge/*` control endpoints    | bridge-local state                      |
+| Browser wants                   | Bridge path                      | Backing surface                         | State    |
+| ------------------------------- | -------------------------------- | --------------------------------------- | -------- |
+| Unary + server-stream RPC       | `/rpc` Connect ⇄ gRPC forward    | the Salus gRPC service fleet            | built    |
+| Named workspaces, saved views   | `/kv` file-backed document store | bridge-local state                      | built    |
+| Audit log, read-only mode       | `/bridge/*` control endpoints    | bridge-local state                      | built    |
+| Stack lifecycle (envoy, db)     | `/infra` control endpoints       | `../salus/infra/*/{up,down,status}.sh`  | `v0.2.2` |
+| Suite runs, live harness output | `/harness` runner endpoints      | `../salus/test/run_all.py` subprocesses | `v0.2.3` |
 
 Two planes, deliberately distinct:
 
@@ -38,7 +38,7 @@ Two planes, deliberately distinct:
 
 Client/bidi-streaming RPCs (`StreamHealth`, `StreamTherapy` — the Edge's ingest sessions) are never forwarded to the browser; the console observes their effects through the query/subscribe surfaces.
 
-### Workspace layout (target)
+### Workspace layout
 
 ```
 packages/
@@ -159,9 +159,9 @@ A **design mock** — the intended look and behaviour of a surface a plan will b
 
 ### Active Plans
 
-- [001-salus-gui-repo.md](docs/plans/001-salus-gui-repo.md) — **running** (promoted 2026-09-08). The `v0.1.x` scaffold train: pnpm workspace + toolchain (`v0.1.1`), the proto vendoring pipeline (`v0.1.2` — `sync-protos` + commit lock + buf codegen + breaking gate), `@salus-gui/{theme,streams}` (`v0.1.3`), `mock-salus` (`v0.1.4`), the bridge (`v0.1.5` — `:56400`, Connect⇄gRPC forward, read-only guard, audit, `/kv`), the SPA shell + first live fleet panel (`v0.1.6`). Releases as `v0.2.0`. Rebased at promotion against the reference console's active branch — codegen stays out of git, `svelte-check` is a CI gate, Linger joins the streams contracts, the bridge classifies client disconnects.
+**Nothing running.** The `v0.1.x` scaffold train released as `v0.2.0` on 2026-09-08 and its plan is completed; the console runs, offline against the mock or `--live` against a real fleet.
 
-Queued behind it: [harness-control-gui.md](docs/plans/backlog/harness-control-gui.md) — the `v0.2.x` control-surface train (fleet observability, infra lifecycle control, the **regression-harness console**, the manually-driven **end-to-end platform session**, then the experimentation surfaces). Opens when the scaffold train releases; releases as `v0.3.0`.
+Next up, unpromoted: [harness-control-gui.md](docs/plans/backlog/harness-control-gui.md) — the `v0.2.x` control-surface train (fleet observability, infra lifecycle control, the **regression-harness console**, the manually-driven **end-to-end platform session**, then the experimentation surfaces); releases as `v0.3.0`. Its operator surface is specified in [design/harness-control-gui/README.md](design/harness-control-gui/README.md). **Promotion is the rebase point**, and for this plan it carries one extra step: walk the design README's §7 _Deviations_, decide each, and record the decision there before allocating the number.
 
 ## Permissions & Tooling (agent)
 

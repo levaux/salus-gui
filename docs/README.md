@@ -26,5 +26,7 @@ link integrity into `docs/plans/` and `research/`).
 - [commit-history.md](commit-history.md) — the version log; the root `package.json` `"version"`
   is the source of truth it mirrors.
 - [plans/INDEX.md](plans/INDEX.md) — the plans register.
-- `dev-setup.md`, `adr/`, the harness-integration reference — arrive with the two founding
-  plans; each package and app carries its own README as the scaffold lands.
+- [dev-setup.md](dev-setup.md) — fresh clone to running console, and the repo's surprises.
+  Operating the stack is [infra/README.md](../infra/README.md).
+- `adr/` and the harness-integration reference arrive with the `v0.2.x` train; each package and
+  app carries its own README.

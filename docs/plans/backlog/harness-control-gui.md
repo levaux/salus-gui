@@ -2,7 +2,7 @@
 
 **Status**: backlog
 
-Turns the walking skeleton of [001-salus-gui-repo.md](../001-salus-gui-repo.md) into the working instrument:
+Turns the walking skeleton of [001-salus-gui-repo.md](../completed/001-salus-gui-repo.md) into the working instrument:
 GUI elements over the Salus gRPC surfaces, a **regression-harness console** that runs
 `../salus/test/run_all.py` from the browser, and — the milestone this plan is built around — the
 **end-to-end platform session run manually from the GUI with automated elements** (preflight,

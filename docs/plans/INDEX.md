@@ -30,9 +30,8 @@ Completed; a running plan can be newer than the first completed row.
 
 Work in flight. Every row here is a numbered file at `docs/plans/NNN-<name>.md`.
 
-| Seq | State   | Plan                                           | Started    | Completed | Architecture docs updated on completion                                                                                                                                                                                                                                                                                                                  |
-| --- | ------- | ---------------------------------------------- | ---------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 001 | running | [001-salus-gui-repo.md](001-salus-gui-repo.md) | 2026-09-08 |           | The `v0.1.x` scaffold train — workspace + toolchain, proto vendoring pipeline, the five packages, the bridge, the SPA shell + first fleet panel, CI. Releases as `v0.2.0`. Rebased at promotion against the reference console's active branch (codegen out of git, svelte-check gate, Linger contract, client-disconnect classification, mock fidelity). |
+| Seq | State | Plan | Started | Completed | Architecture docs updated on completion |
+| --- | ----- | ---- | ------- | --------- | --------------------------------------- |
 
 ## Parked
 
@@ -46,8 +45,9 @@ lives — parked is a state, not a place. Resuming is an edit to this row and no
 
 Shipped. The number never changes and the file never moves again.
 
-| Seq | State | Plan | Started | Completed | Architecture docs updated on completion |
-| --- | ----- | ---- | ------- | --------- | --------------------------------------- |
+| Seq | State     | Plan                                                     | Started    | Completed  | Architecture docs updated on completion                                                                                                                                                                                                                                                                                              |
+| --- | --------- | -------------------------------------------------------- | ---------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 001 | completed | [001-salus-gui-repo.md](completed/001-salus-gui-repo.md) | 2026-09-08 | 2026-09-08 | Released as `v0.2.0`. `docs/dev-setup.md` written; `docs/README.md` points at it; `docs/commit-history.md` carries the v0.1 series prose and the release row; CLAUDE.md's Active Plans cleared and its repository map now describes the shipped workspace rather than naming the plan that would build it.                             |
 
 ## Backlog
 

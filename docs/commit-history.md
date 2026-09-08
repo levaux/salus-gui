@@ -13,5 +13,11 @@ The pre-scaffold state: the repository exists, carrying the planning and agent-m
 apparatus (CLAUDE.md, `.claude/`, `docs/plans/` + INDEX, this file) but no product code — and
 therefore no `package.json` to version, so the bootstrap ships as `chore:` commits and this
 section has no version table. The `v0.1.x` series opens when
-[docs/plans/salus-gui-repo.md](plans/salus-gui-repo.md) starts — the workspace scaffold, the
+[docs/plans/backlog/salus-gui-repo.md](plans/backlog/salus-gui-repo.md) starts — the workspace scaffold, the
 proto vendoring pipeline, the bridge, and the SPA shell.
+
+The second bootstrap commit converted the plans register to the location-based lifecycle
+(`backlog/` unnumbered → `NNN-<name>.md` at promotion → `completed/NNN-<name>.md`, numbers never
+reused) and landed its tooling: `tools/plans.py` (sync / render-index / check / move — moves a
+plan AND rewrites every inbound reference in one pass) and `tools/check-plans.py` (the register
+lint: numbered ⟺ listed, `**Status**:` lines, backlog freshness, no dangling plan links).

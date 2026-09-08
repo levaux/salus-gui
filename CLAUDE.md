@@ -102,24 +102,40 @@ Verification: `git log --oneline --first-parent main` reads as one continuous ve
 
 ## Plans Lifecycle
 
-All planning documents live in [docs/plans/](docs/plans/); the canonical state of every plan is recorded in [docs/plans/INDEX.md](docs/plans/INDEX.md). Each plan is **queued** (written, not started), **in-progress** (work begun — listed under `## Active Plans` below), **parked** (started but paused — INDEX row annotated with the resume condition), or **complete** (shipped — stays in `docs/plans/` as a historical record, removed from CLAUDE.md, affected `docs/*.md` updated).
+Plans live in [docs/plans/](docs/plans/); the register is [docs/plans/INDEX.md](docs/plans/INDEX.md). **A plan's state is its location**, and the governing invariant is **numbered ⟺ listed in INDEX**:
 
-**Reference rule:** the `## Active Plans` section below lists only plans whose state is `queued` or `in-progress` — a completed plan is removed from it on completion. Elsewhere in this file a completed plan may still be cited as the design record for the thing it produced; those citations are documentation, not lifecycle state.
+| State | Where | Numbered? |
+|---|---|---|
+| **backlog** | `docs/plans/backlog/<name>.md` | no — and no INDEX row |
+| **running** | `docs/plans/NNN-<name>.md` | yes, allocated at promotion |
+| **parked** | `docs/plans/NNN-<name>.md` — running work on hold, **no move** | yes |
+| **completed** | `docs/plans/completed/NNN-<name>.md` — **same number** | yes |
 
-### Lifecycle rituals (the agent must follow these)
+**Numbers are allocated at promotion, in the order work actually started, and are never reused or renumbered** — including at completion, which is precisely when a plan has accumulated the most inbound references. The backlog is deliberately unordered: ordering it would mean maintaining a sequence that promotion already produces for free.
 
-- **New plan (cold start):** write `docs/plans/<name>.md`; add a `queued` row to [docs/plans/INDEX.md](docs/plans/INDEX.md). No CLAUDE.md change yet.
-- **Start work (`queued → in-progress`):** bump the INDEX row to `in-progress` + fill `Started`; add a one-line entry under `## Active Plans`.
-- **Complete (`in-progress → complete`):** bump the INDEX row to `complete` + fill `Completed` + list the architecture docs touched; edit the affected `docs/*.md`; remove the `## Active Plans` entry. The plan file stays (historical record).
+**Reference rule:** this file only ever references plans in `backlog/` or currently running. What a completed plan shipped lives in [docs/commit-history.md](docs/commit-history.md) and in its own file under `docs/plans/completed/`.
+
+### Rituals (the agent must follow these)
+
+Every transition is **edit the INDEX row, then run the tool.** Never move a plan file by hand — inbound references accumulate across the tree, and `tools/plans.py sync` rewrites all of them (markdown link targets *and* bare path strings) in the same pass. `tools/check-plans.py` is the lint that holds it all: register consistency both ways, the `**Status**:` line in every plan, backlog freshness, and every link into `docs/plans/` from anywhere.
+
+- **New plan**: write `docs/plans/backlog/<name>.md` with `**Status**: backlog`; run `tools/plans.py render-index`. No number, no row, no change here.
+- **backlog → running**: add an INDEX row under `## Running` with the next free number; `tools/plans.py sync`; set `**Status**: running`; add a one-line entry under Active Plans. **This is the rebase point** — check the plan against the current architecture before picking it up, so a plan that sat in the backlog is not executed stale.
+- **running → completed**: move the row to `## Completed` (the number does not change); `tools/plans.py sync`; set `**Status**: completed`; edit the affected `docs/*.md` to the shipped state; remove the Active Plans entry. **Never delete the plan file.**
+- **running → parked**: move the row to `## Parked` only — no file moves; set `**Status**: parked`. A plan that never started is not parked — it belongs in the backlog, unnumbered.
+
+The full ritual, step by step, is in [docs/plans/INDEX.md](docs/plans/INDEX.md#how-to-update-this-file).
 
 ### Active Plans
 
-- [salus-gui-repo.md](docs/plans/salus-gui-repo.md) — **queued.** The `v0.1.x` scaffold train: pnpm workspace + toolchain, the proto vendoring pipeline (`sync-protos` + commit lock + buf codegen + breaking gate), `@salus-gui/{proto,streams,theme,ui-kit,mock-salus}`, the bridge (`:56400` — Connect⇄gRPC forward, read-only guard, audit, `/kv`), the SPA shell with a first live fleet-status panel, and CI. Releases as `v0.2.0`.
-- [harness-control-gui.md](docs/plans/harness-control-gui.md) — **queued**, opens when the scaffold train releases. The `v0.2.x` control-surface train: fleet observability (Admin/Network status, seq-resumable logs, lifecycle), infra lifecycle control, the **regression-harness console** (run `test/run_all.py` suites from the GUI, stream and structure their output), the manually-driven **end-to-end platform session** (full fleet + Edge `--application-control`, driven step-by-step from the GUI), then the experimentation surfaces (session ejection, protocol operations, health/therapy observation, device-plane simulation). Releases as `v0.3.0`.
+Nothing running yet. The two founding plans sit in the backlog, intended for promotion in this order:
+
+- [salus-gui-repo.md](docs/plans/backlog/salus-gui-repo.md) — the `v0.1.x` scaffold train: pnpm workspace + toolchain, the proto vendoring pipeline (`sync-protos` + commit lock + buf codegen + breaking gate), `@salus-gui/{proto,streams,theme,ui-kit,mock-salus}`, the bridge (`:56400` — Connect⇄gRPC forward, read-only guard, audit, `/kv`), the SPA shell with a first live fleet-status panel, and CI. Releases as `v0.2.0`.
+- [harness-control-gui.md](docs/plans/backlog/harness-control-gui.md) — opens when the scaffold train releases. The `v0.2.x` control-surface train: fleet observability (Admin/Network status, seq-resumable logs, lifecycle), infra lifecycle control, the **regression-harness console** (run `test/run_all.py` suites from the GUI, stream and structure their output), the manually-driven **end-to-end platform session** (full fleet + Edge `--application-control`, driven step-by-step from the GUI), then the experimentation surfaces (session ejection, protocol operations, health/therapy observation, device-plane simulation). Releases as `v0.3.0`.
 
 ## Permissions & Tooling (agent)
 
-[.claude/settings.json](.claude/settings.json) allowlists the commands this workflow needs. **Allowlisted**: `git` (incl. push/tag/merge), `node`/`corepack`/`pnpm`/`npm`/`npx`, `curl`/`jq`/`rg`/`grep`/`find`, `gh`, file plumbing (`mkdir`/`cp`/`mv`/`touch`/`chmod`), `lsof`/`kill` (reaping orphaned dev processes), and the repo helpers `./scripts/*` + `./tools/*`. **Gated** (`ask`): `git reset --hard`, `git clean`. **Denied**: `rm -rf`, `git push --force`.
+[.claude/settings.json](.claude/settings.json) allowlists the commands this workflow needs. **Allowlisted**: `git` (incl. push/tag/merge), `node`/`corepack`/`pnpm`/`npm`/`npx`, `python3` (the stdlib-only plans tooling), `curl`/`jq`/`rg`/`grep`/`find`, `gh`, file plumbing (`mkdir`/`cp`/`mv`/`touch`/`chmod`), `lsof`/`kill` (reaping orphaned dev processes), and the repo helpers `./scripts/*` + `./tools/*` (`tools/plans.py`, `tools/check-plans.py`). **Gated** (`ask`): `git reset --hard`, `git clean`. **Denied**: `rm -rf`, `git push --force`.
 
 The `attribution` block is set to empty (`commit: ""`, `pr: ""`) — it enforces the **no `Co-Authored-By`** rule above mechanically.
 

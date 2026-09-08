@@ -17,6 +17,7 @@
       "Bash(git tag:*)",
       "Bash(git merge:*)",
       "Bash(node:*)",
+      "Bash(python3:*)",
       "Bash(corepack:*)",
       "Bash(pnpm:*)",
       "Bash(npm:*)",

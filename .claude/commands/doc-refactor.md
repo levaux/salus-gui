@@ -24,9 +24,11 @@ operations management).
      supersede it.
    - harness integration — how the console drives the Salus regression suites and renders
      their results.
-4. **Plans**: planning docs live in `docs/plans/`; their canonical state is `docs/plans/INDEX.md`.
-   Respect the queued / in-progress / complete lifecycle (CLAUDE.md → Plans Lifecycle) — don't
-   delete completed plans; they stay as historical record.
+4. **Plans**: planning docs live in `docs/plans/`; their canonical state is `docs/plans/INDEX.md`,
+   and a plan's state is its location (`backlog/` unnumbered → `NNN-<name>.md` running →
+   `completed/NNN-<name>.md`). Never move a plan file by hand — `tools/plans.py sync` rewrites
+   every inbound reference; `tools/check-plans.py` lints the register. Don't delete completed
+   plans; they stay as historical record.
 5. **Proto documentation**: `packages/proto/` documents the vendoring flow (commit lock,
    drift gate, breaking gate) — keep that README current with the tooling.
 6. **Design decisions** (bridge-vs-proxy, grid/dock/chart library choices, transport contracts)

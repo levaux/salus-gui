@@ -1,5 +1,7 @@
 # salus-gui repo — the workspace scaffold (`v0.1.x` → released `v0.2.0`)
 
+**Status**: backlog
+
 Creates the salus-gui codebase: a pnpm monorepo carrying a SvelteKit 2 + Svelte 5 SPA and a
 TypeScript bridge process, speaking natively to the Salus gRPC fleet. The architecture is ported
 from the proven reference console for the parent trading platform (per the naming rule in

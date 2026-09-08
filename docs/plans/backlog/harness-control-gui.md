@@ -1,5 +1,7 @@
 # Harness & control GUI — gRPC surfaces, the regression console, and experimentation (`v0.2.x` → released `v0.3.0`)
 
+**Status**: backlog
+
 Turns the walking skeleton of [salus-gui-repo.md](salus-gui-repo.md) into the working instrument:
 GUI elements over the Salus gRPC surfaces, a **regression-harness console** that runs
 `../salus/test/run_all.py` from the browser, and — the milestone this plan is built around — the

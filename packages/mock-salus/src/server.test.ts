@@ -112,9 +112,15 @@ describe('over the wire', () => {
     const multi = await startMockServer({ port: 0, seed: 'bound', frameMs: 0 });
     await multi.close();
 
-    // Bind the real rebased set and dial Session's own port with a header
-    // naming a different service; the port must win.
-    const fleet = await startMockServer({ seed: 'bound', frameMs: 0 });
+    // Bind a rebased set and dial Session's own port with a header naming a
+    // different service; the port must win.
+    //
+    // A dedicated base port, NOT the 56800 default: this test needs a real
+    // rebased set (base, base+10 … base+50) rather than port 0, and binding the
+    // default made the suite fail with EADDRINUSE whenever a developer had
+    // `./infra/up.sh` running. A test that breaks because the dev stack is up
+    // trains people to ignore it.
+    const fleet = await startMockServer({ port: 56900, seed: 'bound', frameMs: 0 });
     try {
       const sessionPort = fleet.ports[2]!; // 57020 → base+20
       const client = createClient(
@@ -134,5 +140,82 @@ describe('over the wire', () => {
     await expect(
       admin.getStatus({}, { headers: { [ADMIN_TARGET_HEADER]: 'NoSuchService' } }),
     ).rejects.toThrow(/not_found|no such service/i);
+  });
+
+  it('resumes the log stream with no gap and no duplicate', async () => {
+    // The regression this pins: `salus-log-since-seq` is EXCLUSIVE on the
+    // producer side (`seq > since`), so a subscriber resumes by sending the
+    // MAX SEQ IT SAW. The console originally sent last+1, which asked the
+    // producer to skip the very next line — one line lost per reconnect, with
+    // nothing in the UI to show for it. Verified here over the wire because
+    // the header is the whole contract.
+    const network = createClient(Network, transport);
+
+    const seen: bigint[] = [];
+    const first = new AbortController();
+    for await (const row of network.streamLogs({}, { signal: first.signal })) {
+      seen.push(row.seq);
+      if (seen.length === 4) {
+        first.abort();
+        break;
+      }
+    }
+    const maxSeen = seen[seen.length - 1]!;
+
+    const resumed: bigint[] = [];
+    const second = new AbortController();
+    for await (const row of network.streamLogs(
+      {},
+      { signal: second.signal, headers: { [LOG_SINCE_SEQ_HEADER]: maxSeen.toString() } },
+    )) {
+      resumed.push(row.seq);
+      if (resumed.length === 3) {
+        second.abort();
+        break;
+      }
+    }
+
+    // Contiguous across the reconnect boundary: the first resumed line is the
+    // one immediately after the last seen, and nothing repeats.
+    expect(resumed[0]).toBe(maxSeen + 1n);
+    expect(resumed).toEqual([maxSeen + 1n, maxSeen + 2n, maxSeen + 3n]);
+    expect(seen.some((s) => resumed.includes(s))).toBe(false);
+  });
+
+  it('streams SuiteSnapshot as repeated complete frames', async () => {
+    // The snapshot feed is Resnapshot, not SeqResume: each frame is whole
+    // state. Proving that over the wire matters because the console's
+    // reconnect path for this feed is "take the next frame" — there is no seq
+    // to resume from, and a stream that only emitted once would leave a
+    // reconnecting panel waiting forever for an update that never comes.
+    const network = createClient(Network, transport);
+    const frames: { components: number; rows: number }[] = [];
+    const ac = new AbortController();
+
+    for await (const frame of network.streamSuiteSnapshot({}, { signal: ac.signal })) {
+      frames.push({ components: frame.components.length, rows: frame.rows.length });
+      if (frames.length === 3) {
+        ac.abort();
+        break;
+      }
+    }
+
+    expect(frames).toHaveLength(3);
+    // Every frame complete, and identically shaped — not deltas.
+    expect(frames[1]).toEqual(frames[0]);
+    expect(frames[2]).toEqual(frames[0]);
+    expect(frames[0]!.components).toBe(6);
+    expect(frames[0]!.rows).toBeGreaterThan(6);
+  });
+
+  it('a snapshot row carries the real method name and a bigint total', async () => {
+    const network = createClient(Network, transport);
+    const snap = await network.getSuiteSnapshot({});
+    const row = snap.rows.find((r) => r.component === 'Network' && r.name === 'StreamLogs');
+    expect(row).toBeDefined();
+    // calls_total is uint64 — arriving as a number would mean precision loss
+    // in the transport for exactly the counters an operator watches climb.
+    expect(typeof row!.callsTotal).toBe('bigint');
+    expect(snap.snapshotAtUs).toBeGreaterThan(0n);
   });
 });

@@ -27,7 +27,8 @@ import { CATALOG_PORT_BASE, SERVICE_CATALOG } from '@salus-gui/proto/services';
 import { MockFleet } from './fleet.js';
 import { MockRouter, type Ctx } from './router.js';
 import { LIFECYCLE_SINCE_SEQ_HEADER, LOG_SINCE_SEQ_HEADER } from './headers.js';
-import { ScriptedStream, type ScriptedFrame } from './scripted-stream.js';
+import { ScriptedStream, realClock, type ScriptedFrame } from './scripted-stream.js';
+import { MockTelemetry } from './telemetry.js';
 
 /** The hub's default port — outside the Salus 57xxx/58xxx bands. */
 export const MOCK_HUB_PORT = 56800;
@@ -53,6 +54,30 @@ async function* replayThenIdle<T>(
   });
 }
 
+/**
+ * Emit a fresh frame every `periodMs` until the client goes away.
+ *
+ * Distinct from `replayThenIdle` on purpose: a snapshot feed has no backlog to
+ * replay and no sequence to resume from. Each frame is complete state, so the
+ * only thing a subscriber can do on reconnect is take the next one — which is
+ * why this generator produces rather than replays.
+ */
+async function* repeatSnapshot<T>(
+  produce: () => T,
+  signal: AbortSignal,
+  periodMs: number,
+): AsyncGenerator<T> {
+  const clock = realClock;
+  while (!signal.aborted) {
+    yield produce();
+    try {
+      await clock.sleep(periodMs, signal);
+    } catch {
+      return; // aborted mid-sleep: the subscriber left
+    }
+  }
+}
+
 export interface MockServerOptions {
   port?: number;
   seed?: string;
@@ -67,6 +92,10 @@ export function buildRoutes(mock: MockRouter, frameMs: number) {
       getStatus: (_req, c) => mock.getStatus(asCtx(c)),
       getMetrics: (_req, c) => mock.getMetrics(asCtx(c)),
       drain: (_req, c) => mock.drain(asCtx(c)),
+      shutdown: (_req, c) => mock.shutdown(asCtx(c)),
+      setTrace: (req, c) => mock.setLogFlag(asCtx(c), 'trace', req.enabled),
+      setDebug: (req, c) => mock.setLogFlag(asCtx(c), 'debug', req.enabled),
+      getConfig: (req, c) => mock.getConfig(asCtx(c), req.redactSecrets),
       streamLogs: (_req, c) =>
         replayThenIdle(
           mock.adminLogs(asCtx(c), LOG_SINCE_SEQ_HEADER).map((l) => ({
@@ -85,6 +114,17 @@ export function buildRoutes(mock: MockRouter, frameMs: number) {
       getRegistryStatus: () => mock.getRegistryStatus(),
       getAllStatus: () => mock.getAllStatus(),
       getAllMetrics: () => mock.getAllMetrics(),
+      drainAll: () => mock.drainAll(),
+      shutdownAll: () => mock.shutdownAll(),
+      getSuiteSnapshot: (req) => mock.suiteSnapshot(req.resetAfterReturn),
+      reset: (req) => {
+        mock.resetTelemetry(req.componentName);
+        return {};
+      },
+      // 1 Hz by default, matching the platform's publisher cadence. No resume
+      // header is read: SuiteSnapshot carries no seq (see telemetry.ts).
+      streamSuiteSnapshot: (_req, c) =>
+        repeatSnapshot(() => mock.suiteSnapshot(), c.signal, Math.max(frameMs, 1)),
       streamLogs: (_req, c) =>
         replayThenIdle(
           mock.networkLogs(asCtx(c), LOG_SINCE_SEQ_HEADER).map((l) => ({
@@ -186,6 +226,7 @@ export function startMockServer(opts: MockServerOptions = {}): Promise<RunningMo
   // restart a real drop that a StreamController reconnects through.
   const sessions = new Set<ServerHttp2Session>();
   const servers: Http2Server[] = [];
+  const telemetry = new MockTelemetry({ seed: fleet.seed, startedAtMs: fleet.startedAtMs });
 
   return (async (): Promise<RunningMock> => {
     const bound: number[] = [];
@@ -193,7 +234,12 @@ export function startMockServer(opts: MockServerOptions = {}): Promise<RunningMo
       // One router per listener, all over the SAME fleet, so state an operator
       // changes through one service (an ejection, a drain) is visible through
       // every other.
-      const routerOpts = service === undefined ? { fleet } : { fleet, boundService: service };
+      // One telemetry table shared by every listener. Network's snapshot is a
+      // fleet-wide aggregate, so per-listener tables would let two panels
+      // disagree about the same fleet — and a `Reset` through one would leave
+      // the others counting.
+      const routerOpts =
+        service === undefined ? { fleet, telemetry } : { fleet, boundService: service, telemetry };
       const handler = connectNodeAdapter({
         routes: buildRoutes(new MockRouter(routerOpts), frameMs),
       });

@@ -105,8 +105,11 @@ describe('StreamController', () => {
         return fromArray([]); // clean end → reconnect
       },
       onMessage: () => {},
-      resumeHeaders: (last) =>
-        last ? { 'salus-log-since-seq': (last.seq + 1n).toString() } : undefined,
+      // The platform's contract, verbatim from the proto field comments: the
+      // subscriber sends **the max seq it saw**, and the producer replays
+      // `seq > that`. Sending last+1 would ask the producer to skip the very
+      // next line — a silent one-line hole on every reconnect.
+      resumeHeaders: (last) => (last ? { 'salus-log-since-seq': last.seq.toString() } : undefined),
       sleep: instantSleep,
       random: () => 0.5,
     });
@@ -115,10 +118,10 @@ describe('StreamController', () => {
     await until(() => headersSeen.length >= 2);
     await c.stop();
 
-    // First connect asks for nothing; the second resumes at last-seen + 1, so
-    // the service replays with no gap and no duplicate.
+    // First connect asks for nothing; the second resumes AT the last seen seq,
+    // exclusive on the producer side, so the replay is gapless and duplicate-free.
     expect(headersSeen[0]).toBeNull();
-    expect(headersSeen[1]).toBe('9');
+    expect(headersSeen[1]).toBe('8');
   });
 
   it('Resnapshot: onConnected runs after open and before any message', async () => {

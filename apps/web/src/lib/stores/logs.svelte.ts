@@ -57,8 +57,11 @@ export class LogStore {
         this.ring.push(row);
         this.scheduleFlush();
       },
-      resumeHeaders: (last) =>
-        last ? { [LOG_SINCE_SEQ_HEADER]: (last.seq + 1n).toString() } : undefined,
+      // Send the MAX SEQ SEEN, not seq+1. The producer's filter is exclusive
+      // (`seq > since`), so asking for last+1 makes it skip the next line —
+      // one line silently lost per reconnect. Pinned by the mock-salus
+      // regression test "resumes with no gap and no duplicate".
+      resumeHeaders: (last) => (last ? { [LOG_SINCE_SEQ_HEADER]: last.seq.toString() } : undefined),
       isFatal: isFatalConnectError,
       onStateChange: (s) => {
         this.stream = { ...s };

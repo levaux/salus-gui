@@ -25,6 +25,12 @@
   --accent-fg: #ffffff;
   --accent-subtle: #dbe7fe;
 
+  /* Data accent — ports, addresses, throughput series. Deliberately separate
+     from --accent, which means "you can interact with this": a port number is
+     emphasis, not a control, and colouring it with the action accent invites
+     an operator to click something that does nothing. */
+  --accent-data: #0e7490;
+
   --focus-ring: #2563eb;
   --shadow-sm: 0 1px 2px rgb(16 25 45 / 8%);
   --shadow-md: 0 4px 12px rgb(16 25 45 / 12%);

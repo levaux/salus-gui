@@ -37,7 +37,8 @@ ClickHouse :59000); `⌘K` palette button; UTC clock (mono, right-aligned, min-w
 red text) — armed confirm before it fires.
 
 **Footer** (28px): left — snapshot state glyph (`⟳` green live / `⊘` yellow stale) + text
-(`StreamSuiteSnapshot 1 Hz · seq 4,821 · …`); right — `dense · insights 50% · ⌘K`.
+(`StreamSuiteSnapshot 1 Hz · updated 0.4s ago · 7 components` — **not** a seq; see §7.8, the
+snapshot stream has none); right — `dense · insights 50% · ⌘K`.
 
 **Density** is a root prop: `dense` `--fs:12px --fs-s:11px --row:26px --pad:10px --gap:8px`,
 `comfortable` `13/12/34px/14px/12px`. Every row height, pad and gap in the design reads these.
@@ -206,7 +207,7 @@ reorders; order/hidden/split persist in `localStorage["salus-gui.v2.layout"]`.
 | Element | Surface |
 |---|---|
 | Registry rows, chip status/heartbeat, `inflt`, uptime | `Network.GetRegistryStatus` + `GetAllStatus` / `GetAllMetrics` (conflated), `StreamLifecycleEvents` for instant transitions |
-| Chip sparks, SuiteSnapshot | `Network.StreamSuiteSnapshot` (1 Hz, seq-resumable) — RPC/s = Σ inbound `msg_rate`, I/O = Σ bytes in+out per component |
+| Chip sparks, SuiteSnapshot | `Network.StreamSuiteSnapshot` (1 Hz, **full snapshot per frame — no seq, see §7.8**) — RPC/s = Σ inbound `msg_rate_1s`, I/O = Σ `bps_in_1s + bps_out_1s` per component |
 | Logs, Inspector logs | `Network.StreamLogs` (seq resume); per-process `Admin.StreamLogs` via `salus-admin-target` |
 | Inspector facts / actions | `Admin.{Ping,GetStatus,GetMetrics,GetConfig(redacted),SetTrace,SetDebug,Drain,Shutdown}`; `Network.{DrainAll,ShutdownAll,Reset}` — all `MUTATING_RPCS`-listed, read-only-guardable, audited |
 | Infra pills, Postgres/ClickHouse/Envoy chips, Breakers | bridge `/infra` status probes + `up`/`down` actions (v0.2.2) |
@@ -294,6 +295,17 @@ deviation list resolved from memory only ever confirms what it already said.
    fleet-wide (`v0.1.5`, tested), and the plan extends the same switch to `/harness`, `/infra`
    and the orchestrator. The GUI renders the state; it must never be the thing that prevents the
    call.
+8. **`StreamSuiteSnapshot` is not seq-resumable** — _found at `v0.2.1`; plan, data contract and
+   footer copy all corrected._ The plan's ground truth listed it beside the log and lifecycle
+   feeds as seq-resumable, and §5's data-contract row said "1 Hz, seq-resumable". The proto says
+   otherwise: `SuiteSnapshot` has **no `seq` field** and `StreamSuiteSnapshotRequest` is empty —
+   every frame is complete state (`snapshot_at_us` + `components[]` + `rows[]`). It is a
+   **Resnapshot** feed: reconnect takes the next frame and replaces, and there is nothing to
+   resume from. The consequence for this design is concrete — §1's footer specified
+   `seq 4,821`, and **there is no such number to show**; it now renders snapshot age. A seq there
+   would have been the console inventing a value in its own chrome, the same failure the
+   `⊘ SKIP` / `STALE` rules exist to prevent. `StreamLogs` and `StreamLifecycleEvents` _are_
+   seq-resumable and unaffected (`AggregatedLogEntry.seq`, `LifecycleEvent.seq`).
 
 ## 8. Implementation notes
 

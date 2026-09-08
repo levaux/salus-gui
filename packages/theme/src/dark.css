@@ -28,6 +28,9 @@
   --accent-fg: #06101f;
   --accent-subtle: #16294a;
 
+  /* Data accent — see light.css for why it is not --accent. */
+  --accent-data: #5fd7e0;
+
   --focus-ring: #4d8bf5;
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 40%);
   --shadow-md: 0 4px 14px rgb(0 0 0 / 50%);
@@ -75,6 +78,9 @@
     --accent-hover: #6aa0f7;
     --accent-fg: #06101f;
     --accent-subtle: #16294a;
+
+    /* Data accent — see light.css for why it is not --accent. */
+    --accent-data: #5fd7e0;
 
     --focus-ring: #4d8bf5;
     --shadow-sm: 0 1px 2px rgb(0 0 0 / 40%);

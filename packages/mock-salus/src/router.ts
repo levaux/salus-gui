@@ -15,6 +15,7 @@
 import { ConnectError, Code } from '@connectrpc/connect';
 import { ADMIN_TARGET_HEADER } from './headers.js';
 import { LogLevelValue, MockFleet, ServiceStatusValue, type MockLogLine } from './fleet.js';
+import { MockTelemetry } from './telemetry.js';
 
 /** A plain view of the request context the handlers need. */
 export interface Ctx {
@@ -78,11 +79,18 @@ export interface MockRouterOptions {
    * is no port to distinguish services.
    */
   boundService?: string;
+  /**
+   * Shared telemetry, so every per-service listener reports the same snapshot.
+   * Network aggregates the whole fleet, so two listeners with separate tables
+   * would disagree about a fleet-wide view.
+   */
+  telemetry?: MockTelemetry;
 }
 
 export class MockRouter {
   readonly fleet: MockFleet;
   readonly boundService: string | undefined;
+  readonly telemetry: MockTelemetry;
   private tickCount = 0;
   private readonly tickFn: () => number;
 
@@ -90,6 +98,9 @@ export class MockRouter {
     this.fleet = opts.fleet;
     this.tickFn = opts.tick ?? ((): number => this.tickCount++);
     this.boundService = opts.boundService;
+    this.telemetry =
+      opts.telemetry ??
+      new MockTelemetry({ seed: opts.fleet.seed, startedAtMs: opts.fleet.startedAtMs });
   }
 
   /** Which service an Admin call answers for. */
@@ -155,6 +166,36 @@ export class MockRouter {
       inFlightRpcs: this.fleet.metricsFor(name, this.tickFn()).rpcActive,
       detail: `${name} draining`,
     };
+  }
+
+  /**
+   * `Admin.Shutdown`. Accepted rather than executed: the process would be gone
+   * on a real fleet, and the console's next read is what discovers that.
+   */
+  shutdown(ctx: Ctx): { accepted: boolean; message: string } {
+    const name = this.target(ctx);
+    if (!this.fleet.shutdown(name)) {
+      throw new ConnectError(`no such service: ${name}`, Code.NotFound);
+    }
+    return { accepted: true, message: `${name} shutting down` };
+  }
+
+  /** `Admin.SetTrace` / `Admin.SetDebug`. The response carries only `enabled`. */
+  setLogFlag(ctx: Ctx, flag: 'trace' | 'debug', enabled: boolean): { enabled: boolean } {
+    const name = this.target(ctx);
+    if (!this.fleet.getService(name)) {
+      throw new ConnectError(`no such service: ${name}`, Code.NotFound);
+    }
+    return this.fleet.setLogFlag(name, flag, enabled);
+  }
+
+  /** `Admin.GetConfig` — a `{ format, payload }` blob, redaction as requested. */
+  getConfig(ctx: Ctx, redactSecrets: boolean): { format: string; payload: string } {
+    const name = this.target(ctx);
+    if (!this.fleet.getService(name)) {
+      throw new ConnectError(`no such service: ${name}`, Code.NotFound);
+    }
+    return this.fleet.configFor(name, redactSecrets);
   }
 
   /** One service's own log ring, resumed from `salus-log-since-seq`. */
@@ -305,6 +346,74 @@ export class MockRouter {
       }
     }
     return events.filter((e) => e.seq > since);
+  }
+
+  /**
+   * `Network.GetSuiteSnapshot` / one frame of `StreamSuiteSnapshot`.
+   *
+   * A complete frame every time — there is no `seq` on `SuiteSnapshot` and no
+   * resume header to read, so a reconnecting subscriber takes the next frame
+   * whole. `resetAfterReturn` is honoured because `GetSuiteSnapshotRequest`
+   * offers it and a caller that asks for a reset expects the next read to
+   * start from zero.
+   */
+  suiteSnapshot(resetAfterReturn = false): ReturnType<MockTelemetry['snapshot']> {
+    const tick = this.tickFn();
+    const frame = this.telemetry.snapshot(tick);
+    if (resetAfterReturn) this.telemetry.reset('', tick);
+    return frame;
+  }
+
+  /** `Network.Reset` — empty name means every component. */
+  resetTelemetry(componentName: string): number {
+    return this.telemetry.reset(componentName, this.tickFn());
+  }
+
+  /** `Network.DrainAll` — the fan-out, one entry per registered service. */
+  drainAll(): {
+    entries: {
+      serviceName: string;
+      adminAddress: string;
+      drain: { accepted: boolean; inFlightRpcs: number; detail: string };
+    }[];
+  } {
+    return {
+      entries: this.fleet.listServices().map((s) => {
+        const accepted = this.fleet.drain(s.name);
+        return {
+          serviceName: s.name,
+          adminAddress: `127.0.0.1:${s.port}`,
+          drain: {
+            accepted,
+            inFlightRpcs: this.fleet.metricsFor(s.name, this.tickFn()).rpcActive,
+            detail: accepted ? `${s.name} draining` : `${s.name} unreachable`,
+          },
+        };
+      }),
+    };
+  }
+
+  /** `Network.ShutdownAll` — the kill switch, fanned out the same way. */
+  shutdownAll(): {
+    entries: {
+      serviceName: string;
+      adminAddress: string;
+      shutdown: { accepted: boolean; message: string };
+    }[];
+  } {
+    return {
+      entries: this.fleet.listServices().map((s) => {
+        const accepted = this.fleet.shutdown(s.name);
+        return {
+          serviceName: s.name,
+          adminAddress: `127.0.0.1:${s.port}`,
+          shutdown: {
+            accepted,
+            message: accepted ? `${s.name} shutting down` : `${s.name} unreachable`,
+          },
+        };
+      }),
+    };
   }
 
   // --- Salus.Session.Session ----------------------------------------------

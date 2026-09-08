@@ -1,6 +1,6 @@
 {
   "name": "@salus-gui/theme",
-  "version": "0.1.3",
+  "version": "0.2.1",
   "private": true,
   "type": "module",
   "exports": {
@@ -11,6 +11,10 @@
     "./env-accent.css": "./src/env-accent.css"
   },
   "scripts": {
-    "build": "tsc -b"
+    "build": "tsc -b",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.2"
   }
 }

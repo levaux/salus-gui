@@ -173,7 +173,11 @@ importers:
         specifier: ^3.0.2
         version: 3.2.7(@types/node@22.20.1)(tsx@4.23.13)
 
-  packages/theme: {}
+  packages/theme:
+    devDependencies:
+      vitest:
+        specifier: ^3.0.2
+        version: 3.2.7(@types/node@22.20.1)(tsx@4.23.13)
 
   packages/ui-kit:
     dependencies:

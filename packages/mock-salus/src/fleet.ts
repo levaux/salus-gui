@@ -50,6 +50,11 @@ export interface MockService {
   failCount: number;
   /** Set when an operator drains it, so the change is visible on re-read. */
   drained: boolean;
+  /** `Admin.SetTrace` / `Admin.SetDebug` — flags an operator toggles and reads back. */
+  trace: boolean;
+  debug: boolean;
+  /** Set by `Admin.Shutdown`; the service stops answering as RUNNING. */
+  stopped: boolean;
 }
 
 export interface MockSession {
@@ -146,6 +151,9 @@ export class MockFleet {
         connected: status !== ServiceStatusValue.STARTING,
         failCount: status === ServiceStatusValue.DEGRADED ? intBetween(1, 3, this.seed, name) : 0,
         drained: false,
+        trace: false,
+        debug: false,
+        stopped: false,
       });
       this.logsByService.set(name, []);
     }
@@ -196,6 +204,67 @@ export class MockFleet {
     svc.drained = true;
     svc.status = ServiceStatusValue.DEGRADED;
     return true;
+  }
+
+  /**
+   * Stop a service. STOPPED rather than ERROR: an operator's deliberate
+   * shutdown is a different condition from a service that failed, and the
+   * console colours them differently on purpose.
+   */
+  shutdown(name: string): boolean {
+    const svc = this.services.get(name);
+    if (!svc) return false;
+    svc.stopped = true;
+    svc.connected = false;
+    svc.status = ServiceStatusValue.STOPPED;
+    return true;
+  }
+
+  /**
+   * Toggle a log flag and report the resulting state.
+   *
+   * `SetLogLevelResponse` carries **only `enabled`** — there is no `previous`
+   * field in the proto, so a caller cannot render "trace on (was off)" from
+   * one call, and must not pretend to. The flag is kept here so a subsequent
+   * `GetConfig` reflects it, which is the honest way to read it back.
+   */
+  setLogFlag(name: string, flag: 'trace' | 'debug', enabled: boolean): { enabled: boolean } {
+    const svc = this.services.get(name);
+    if (!svc) throw new RangeError(`no such service: ${name}`);
+    svc[flag] = enabled;
+    return { enabled };
+  }
+
+  /**
+   * A service's config as `Admin.GetConfig` returns it: `{ format, payload }`,
+   * a serialized blob rather than a field list, so the console parses `payload`
+   * according to `format` instead of reading typed entries.
+   *
+   * `redactSecrets` is **honoured, not assumed**. The console always asks for
+   * redaction, but a mock that redacted regardless would hide a console that
+   * forgot to ask — the request field would be dead and nobody would know.
+   */
+  configFor(name: string, redactSecrets: boolean): { format: string; payload: string } {
+    const svc = this.services.get(name);
+    if (!svc) throw new RangeError(`no such service: ${name}`);
+    const secret = redactSecrets ? '<redacted>' : 'dev-value-not-a-real-secret';
+    return {
+      format: 'json',
+      payload: JSON.stringify(
+        {
+          service_name: svc.name,
+          listen_port: svc.port,
+          thread_pool_size: svc.threadPoolSize,
+          network_address: '127.0.0.1:57000',
+          trace_enabled: svc.trace,
+          debug_enabled: svc.debug,
+          auth_secret: secret,
+          records_dsn: secret,
+        },
+        null,
+        2,
+      ),
+    };
   }
 
   // --- logs ----------------------------------------------------------------

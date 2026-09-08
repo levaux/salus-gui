@@ -10,3 +10,4 @@ export * from './headers.js';
 export * from './router.js';
 export * from './scripted-stream.js';
 export * from './server.js';
+export * from './telemetry.js';

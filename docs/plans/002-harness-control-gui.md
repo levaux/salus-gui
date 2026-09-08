@@ -38,8 +38,16 @@ retry → SkipRoutine → GetApplicationState`, cross-checked against sqlite (va
   everything operator-grade is deliberately not edge-routed.
 - **Every Component serves `Salus.Admin.Admin`** on its own port — Edge processes included — so
   the `admin` catalog entry + `salus-admin-target` header reaches anything, and
-  `Admin.StreamLogs` / `Network.StreamLogs` / `StreamLifecycleEvents` / `StreamSuiteSnapshot`
-  are seq-resumable structured feeds, ANSI-free by contract.
+  `Admin.StreamLogs` / `Network.StreamLogs` / `StreamLifecycleEvents` are seq-resumable
+  structured feeds, ANSI-free by contract (`AggregatedLogEntry.seq` +
+  `salus-log-since-seq`; `LifecycleEvent.seq` + `salus-lifecycle-since-seq`).
+- **`StreamSuiteSnapshot` is _not_ seq-resumable** — corrected against the proto at `v0.2.1`.
+  `SuiteSnapshot` carries no `seq` field and `StreamSuiteSnapshotRequest` is empty; every frame
+  is complete state (`snapshot_at_us` + `components[]` + `rows[]`). It is therefore a
+  **Resnapshot** feed, not a SeqResume one: a reconnecting subscriber simply takes the next
+  frame and replaces, and there is nothing to resume from. Anything in the UI that would show a
+  snapshot `seq` must show **age** instead — a seq rendered there would be a fabricated number,
+  which is the "never fake an unpopulated field" guardrail applied to our own chrome.
 
 ## Design reference
 

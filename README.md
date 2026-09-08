@@ -12,7 +12,7 @@ and wire-compatibility gates, and a deterministic mock of the fleet that makes t
 runnable with no Salus checkout at all. One panel is live — fleet registry and the aggregated log
 feed — which is enough to prove the path end to end but is not yet an operations console.
 
-Next is [docs/plans/backlog/harness-control-gui.md](docs/plans/backlog/harness-control-gui.md),
+Next is [docs/plans/002-harness-control-gui.md](docs/plans/002-harness-control-gui.md),
 the `v0.2.x` control-surface train: fleet observability, infra lifecycle control, the
 regression-harness console over `../salus/test/run_all.py`, the manually-driven end-to-end
 platform session (full fleet + Edge application control), then the experimentation surfaces. Its

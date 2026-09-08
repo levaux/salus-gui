@@ -1,7 +1,7 @@
 # Design reference — Harness & control GUI
 
 **What this is.** The intended operator surface for the `v0.2.x` control-surface train
-([harness-control-gui.md](../../docs/plans/backlog/harness-control-gui.md)), as an HTML design
+([harness-control-gui.md](../../docs/plans/002-harness-control-gui.md)), as an HTML design
 mock. It is **a design reference, not product code**: the console is recreated in the target
 stack (SvelteKit 2 + Svelte 5 runes, `@salus-gui/ui-kit` dock/grid/status/log components,
 `@salus-gui/theme` tokens, `@salus-gui/streams` for every feed) — never by shipping this HTML.
@@ -238,29 +238,62 @@ above); the mock hard-codes them because it has no theme package to import.
 The mock was drawn before the plan's _Ground truth_ section was verified. **The plan wins**;
 record the resolution here, don't redraw the mock.
 
-1. **Harness flags.** Mock chips: `--speed · --plain · --warn-as-error` + a sanitizer selector.
-   Plan whitelist: `--skip --verbose --diag-level --warn-as-error --no-speed --iterations`, and
-   `--plain` is always on. Re-cut the chips to the whitelist; keep the sanitizer selector only
-   if `run_all.py` exposes one (else it is a build-variant note in the History row).
-2. **Simulate › session stepper.** Mock: a TherapyDevice `Advertise → … → Clear Session` walk.
-   Plan v0.2.4: the **EdgeApplication loop** `ListDueRoutines → StartRoutine → SkipRoutine →
-   GetApplicationState` over an orchestrated process plan with readiness gates. Re-cut the
-   stepper to those steps; the process list becomes the plan's per-process state/port/log-tail
-   rows (the mock's Live › Components block is the right shape).
-3. **Infra pills / Breakers.** Mock toggles are chaos switches. Real: `/infra` status probes
-   and `up`/`down` actions (audited; refused in read-only). Breakers for _services_ map to
-   `Admin.Shutdown` + relaunch through the orchestrator, not `/infra`.
-4. **Transport.** The mock has no bridge; every stream the design shows must go through
-   `@salus-gui/streams` (StreamController + ConflatedTable, seq resume) with a StreamBadge in
-   the owning panel header — the design's meta text (`seq · n rows`, `disconnected — resume by
-   seq`) is that badge's copy.
-5. **Reconcile, don't trust.** The Live pane's terminal state must come from process exit
-   (watchdog-polled), and `StartRoutine` panels re-read `GetApplicationState` — the mock fakes
-   both from its own clock.
-6. **EdgeControl (:57060)** is not on the topology; add a route-row chip when its proto is
-   vendored (later train).
-7. **Read-only mode.** Not drawn. Every mutator button (Inspector actions, ShutdownAll, eject,
-   run/stop, fleet, breakers, palette commands) renders disabled with a `read-only` tooltip.
+**Resolved 2026-09-08 at promotion of plan `002`**, each item checked against the Salus tree at
+the pinned commit (`2470b82`, v0.8.5) rather than against the plan's prose. Two of the seven
+changed the plan rather than the mock, which is the point of doing this against ground truth: a
+deviation list resolved from memory only ever confirms what it already said.
+
+1. **Harness flags** — _mock re-cut, and the plan's whitelist corrected._ Verified against
+   `test/run_all.py`'s own `add_argument` calls. The mock's `--speed` chip does not exist
+   (the real flag is `--no-speed`), and `--plain` is not a chip because the bridge always passes
+   it. **The sanitizer selector stays**: `--sanitize [SUFFIX]` is real (`nargs="?"`,
+   `const="-tsan"`, documented `-tsan` / `-asan` / `-ubsan`), so the conditional in the original
+   item resolves to _keep_, not to a History-row note. The plan's whitelist was therefore
+   **incomplete** and gains `--sanitize` — constrained to those three suffixes rather than
+   accepting free text, because the value becomes a build-tree path suffix (`build-tsan`) and
+   the bridge's spawn surface must not take arbitrary strings from a browser ("Subprocess
+   authority is explicit"). `--log-root` exists and is deliberately **not** exposed: the bridge
+   owns artifact paths, and letting the browser choose one widens the spawn surface for nothing.
+2. **Simulate › session stepper** — _adopt the plan._ Re-cut to the EdgeApplication loop
+   (`ListDueRoutines → StartRoutine → SkipRoutine → GetApplicationState`). The mock's
+   TherapyDevice walk is a _device_ protocol sequence; the plan's loop is what
+   `test/EdgeApp/run_test.py` actually drives and asserts, so it is the one with an oracle. The
+   `edgeapplication` catalog entry already carries `dynamicTarget` and the 58070 harness
+   convention, so the binding exists. The process list becomes the orchestrator's per-process
+   state/port/log-tail rows; the mock's Live › Components block is the right shape.
+3. **Infra pills / Breakers** — _adopt the plan, with one consequence the mock hides._ Infra rows
+   (Envoy / Postgres / ClickHouse) bind to `/infra` probes and `up`/`down`; service breakers are
+   `Admin.Shutdown` + relaunch through the orchestrator. Both audited, both refused in read-only.
+   **The mock's instant flip is not achievable**: `/infra` actions shell docker scripts and take
+   seconds, so every breaker needs a pending state and a probe-confirmed settle. A control that
+   paints its new state before the probe agrees is the "never fake an unpopulated field"
+   guardrail in miniature.
+4. **Transport** — _adopt the plan._ Every feed through `@salus-gui/streams` (StreamController +
+   ConflatedTable, seq resume), with a StreamBadge in the owning panel header; the design's meta
+   copy (`seq · n rows`, `disconnected — resume by seq`) is that badge's text. No new component
+   is needed: `StreamBadge` shipped in `@salus-gui/ui-kit` at `v0.1.6` and already reports per
+   feed rather than globally, which is exactly what this design assumes.
+5. **Reconcile, don't trust** — _adopt the plan; it is the load-bearing guardrail._ Live-pane
+   terminal state comes from process exit, watchdog-polled at ~1.2 s / 3 s / 8 s; `StartRoutine`
+   panels re-read `GetApplicationState` after a terminal disposition. The mock fakes both from
+   its own clock, so **no part of the mock's timing behaviour is evidence** — it cannot show the
+   failure this guardrail exists to prevent.
+6. **EdgeControl (:57060)** — _still deferred, but the stated trigger was wrong._
+   `EdgeControl.proto` **is** already vendored, so "add a chip when its proto is vendored" reads
+   as satisfied when it is not: the file is 998 lines of messages with **no `service` block and
+   no `rpc`s**. Salus lands contracts first (v0.8.1–v0.8.5, which is what `2470b82` pins) and the
+   service itself at **v0.8.6, still queued**. The real trigger is therefore: _Salus ships v0.8.6,
+   protos are re-synced, and a `SERVICE_CATALOG` entry exists_ — a chip cannot be drawn for a
+   target the catalog cannot address. Note for whoever picks it up: `OpenControlChannel` is a
+   long-lived bidi stream, so by the architecture rule it is **never forwarded to the browser**;
+   the chip will show it the way the console shows the Edge's ingest sessions — through query and
+   subscribe surfaces, not by holding the channel.
+7. **Read-only mode** — _adopt the plan._ Every mutator (Inspector actions, ShutdownAll, eject,
+   run/stop, fleet, breakers, palette commands) renders disabled with a `read-only` tooltip. The
+   enforcement already exists and is not the GUI's job: the bridge refuses mutating RPCs
+   fleet-wide (`v0.1.5`, tested), and the plan extends the same switch to `/harness`, `/infra`
+   and the orchestrator. The GUI renders the state; it must never be the thing that prevents the
+   call.
 
 ## 8. Implementation notes
 

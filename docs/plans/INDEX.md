@@ -30,8 +30,9 @@ Completed; a running plan can be newer than the first completed row.
 
 Work in flight. Every row here is a numbered file at `docs/plans/NNN-<name>.md`.
 
-| Seq | State | Plan | Started | Completed | Architecture docs updated on completion |
-| --- | ----- | ---- | ------- | --------- | --------------------------------------- |
+| Seq | State   | Plan                                                       | Started    | Completed | Architecture docs updated on completion                                                                                                                                                                                          |
+| --- | ------- | ---------------------------------------------------------- | ---------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 002 | running | [002-harness-control-gui.md](002-harness-control-gui.md)   | 2026-09-08 |           | The `v0.2.x` control-surface train — fleet observability, `/infra` lifecycle, the regression-harness console, the manually-driven end-to-end platform session, then the experimentation surfaces. Releases as `v0.3.0`.        |
 
 ## Parked
 
@@ -57,7 +58,6 @@ Written, not yet promoted. No number and no INDEX state until work starts.
 
 | Plan | Title |
 |---|---|
-| [harness-control-gui.md](backlog/harness-control-gui.md) | Harness & control GUI — gRPC surfaces, the regression console, and experimentation (`v0.2.x` → released `v0.3.0`) |
 
 ## How to update this file
 

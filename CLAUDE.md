@@ -160,9 +160,9 @@ A **design mock** — the intended look and behaviour of a surface a plan will b
 
 ### Active Plans
 
-**Nothing running.** The `v0.1.x` scaffold train released as `v0.2.0` on 2026-09-08 and its plan is completed; the console runs, offline against the mock or `--live` against a real fleet.
+- [002-harness-control-gui.md](docs/plans/002-harness-control-gui.md) — **running** (promoted 2026-09-08). The `v0.2.x` control-surface train: fleet observability panels (`v0.2.1`), `/infra` lifecycle control (`v0.2.2`), the **regression-harness console** over `test/run_all.py` (`v0.2.3`), the manually-driven **end-to-end platform session** via the EdgeApplication loop (`v0.2.4`), then the experimentation surfaces — control (`v0.2.5`) and data-plane observation (`v0.2.6`). Releases as `v0.3.0`. Its operator surface is specified in [design/harness-control-gui/README.md](design/harness-control-gui/README.md), whose §7 _Deviations_ were resolved at promotion against the Salus tree: the sanitizer selector is real so it stays (and the plan's flag whitelist gained `--sanitize`, value-constrained), and EdgeControl stays deferred on a corrected trigger — its proto is vendored but carries no service block, which lands at Salus `v0.8.6`.
 
-Next up, unpromoted: [harness-control-gui.md](docs/plans/backlog/harness-control-gui.md) — the `v0.2.x` control-surface train (fleet observability, infra lifecycle control, the **regression-harness console**, the manually-driven **end-to-end platform session**, then the experimentation surfaces); releases as `v0.3.0`. Its operator surface is specified in [design/harness-control-gui/README.md](design/harness-control-gui/README.md). **Promotion is the rebase point**, and for this plan it carries one extra step: walk the design README's §7 _Deviations_, decide each, and record the decision there before allocating the number.
+The `v0.1.x` scaffold train released as `v0.2.0` on 2026-09-08; plan `001` is completed.
 
 ## Permissions & Tooling (agent)
 

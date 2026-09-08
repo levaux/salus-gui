@@ -1,8 +1,8 @@
 # Harness & control GUI — gRPC surfaces, the regression console, and experimentation (`v0.2.x` → released `v0.3.0`)
 
-**Status**: backlog
+**Status**: running
 
-Turns the walking skeleton of [001-salus-gui-repo.md](../completed/001-salus-gui-repo.md) into the working instrument:
+Turns the walking skeleton of [001-salus-gui-repo.md](completed/001-salus-gui-repo.md) into the working instrument:
 GUI elements over the Salus gRPC surfaces, a **regression-harness console** that runs
 `../salus/test/run_all.py` from the browser, and — the milestone this plan is built around — the
 **end-to-end platform session run manually from the GUI with automated elements** (preflight,
@@ -44,7 +44,7 @@ retry → SkipRoutine → GetApplicationState`, cross-checked against sqlite (va
 ## Design reference
 
 The operator surface this train builds is specified in
-[design/harness-control-gui/README.md](../../../design/harness-control-gui/README.md) (HTML mock
+[design/harness-control-gui/README.md](../../design/harness-control-gui/README.md) (HTML mock
 alongside it): a single-viewport console — **Insights** (a fixed-position topology schematic of
 service **chips** with an Inspector drawer) over a tabbed, drag-configurable **Workbench**
 (Monitor / Tests / Simulate). Each stage below names the panels it realises; the README's
@@ -119,7 +119,10 @@ Bridge `/harness` surface: a **typed suite catalog** (the 31 keys + display name
 - infra gating, with a vitest **drift gate** that parses `test/run_all.py`'s registry and fails
   when the catalog and the registry disagree); a run spawner (`python3 test/run_all.py --plain
 [--only k]…`, forwarded flags whitelisted: `--skip`, `--verbose`, `--diag-level`,
-  `--warn-as-error`, `--no-speed`, `--iterations`); live stdout streamed to the browser; a **line
+  `--warn-as-error`, `--no-speed`, `--iterations`, and `--sanitize` **constrained to
+  `-tsan`/`-asan`/`-ubsan`** — it selects a build tree by path suffix, so a free-text value would
+  let a browser steer the spawn. `--log-root` is deliberately not forwarded: the bridge owns
+  artifact paths); live stdout streamed to the browser; a **line
   classifier** turning the output grammar into a structured run model (suite open/close/skip,
   check rows with pass/fail/detail, counts, elapsed, master verdict from exit code) — classifier
   fixtures are **recorded transcripts of real runs**, committed, so grammar drift is a red test,

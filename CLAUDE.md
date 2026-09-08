@@ -14,7 +14,7 @@
 | `docs/plans/`            | the work lifecycle: `backlog/` → `NNN-*.md` → `completed/`; register in [INDEX.md](docs/plans/INDEX.md)                           |
 | `docs/commit-history.md` | the release ledger                                                                                                                |
 | `research/`              | open questions, not committed to — see [research/README.md](research/README.md)                                                   |
-| `tools/`                 | stdlib-only repo tooling (`plans.py`, `check-plans.py`; the proto sync tool arrives with the scaffold)                            |
+| `tools/`                 | repo tooling (`plans.py`, `check-plans.py` — stdlib-only Python; `sync-protos.ts`)                                                |
 | `.claude/`               | agent settings, hooks and commands                                                                                                |
 | `packages/`, `apps/`     | the pnpm workspace — arrives with [salus-gui-repo.md](docs/plans/001-salus-gui-repo.md), each package/app carrying its own README |
 
@@ -69,15 +69,23 @@ Infra: Envoy edge 58000 (admin 58009), Postgres 55432, ClickHouse 59000 native /
 ## Build & Dev (once the scaffold plan lands)
 
 ```bash
-corepack enable && pnpm install   # postinstall runs buf codegen — the tree typechecks after this
+corepack enable && pnpm install          # postinstall runs buf codegen — the tree typechecks after this
+pnpm --filter @salus-gui/bridge cert     # once — the bridge refuses to start without TLS
+
+./infra/up.sh                            # mock fleet + bridge (offline)   → infra/README.md
+./infra/up.sh --live                     # bridge → a real Salus fleet
+./infra/status.sh                        # console processes + platform ports
+./infra/logs.sh bridge -f                # follow a component's log
+./infra/down.sh                          # stop
+
 pnpm gen              # regenerate packages/proto/src/gen by hand (it is NOT committed)
-pnpm dev:stack:mock   # mock-salus + bridge + web — fully offline
-pnpm dev:stack        # bridge + web against a running Salus fleet
 pnpm test             # vitest across packages and apps — the single test tier
 pnpm lint && pnpm typecheck && pnpm check && pnpm build   # check = svelte-check
 ```
 
-- **Never run dev servers (`pnpm dev*`, `vite`, `tsx watch`) as foreground agent commands** — they don't exit, so a foreground call hangs the turn. Use a background task or a real terminal. A `PreToolUse` hook in [.claude/settings.json](.claude/settings.json) **denies** the foreground form mechanically and allows the backgrounded one.
+- **Use `./infra/up.sh` rather than `pnpm dev*` directly.** It detaches properly (a `pnpm dev*` child holding the caller's stdin hangs the invoking shell), records PIDs so `down.sh` can stop the _server_ rather than a fork of the script, checks the three prerequisites up front, and stops by PID tree — never by process group, which shares a group with the calling shell and takes it down too.
+- **Never run dev servers (`pnpm dev*`, `vite`, `tsx watch`) as foreground agent commands** — they don't exit, so a foreground call hangs the turn. A `PreToolUse` hook in [.claude/settings.json](.claude/settings.json) **denies** the foreground form mechanically, including inside a subshell or after `&&`, and allows `./infra/up.sh`, `run_in_background`, and one-shot builds.
+- **Gate commands must not be piped.** `pnpm lint | tail` hands you the pipeline's exit code, not lint's — run gates with `set -e` and no pipe, or a failure reads as a pass.
 - Proto vendoring: `pnpm sync-protos` copies `../salus/src/proto/Salus/*.proto` into `packages/proto/vendor/salus/` and pins the source commit in `packages/proto/salus-commit.lock`; `pnpm sync-protos:check` is the CI drift gate; `buf breaking` against the committed baseline image is the wire-compat gate. **Generated output stays out of git, recorded state stays in it**: `src/gen/` is ignored and rebuilt, while `.buf-image-prev.binpb` is tracked — it is the previous proto image, not derivable from the tree, and losing it disarms the breaking gate.
 - **`tsc -b` does not check `.svelte` script blocks** — `pnpm check` (svelte-check) is the gate that does, and it is a distinct CI step. A wrong proto field path inside a component is invisible to typecheck.
 
@@ -88,7 +96,7 @@ One tier: `pnpm test` runs vitest across every package and app. `mock-salus` ser
 ## Standing Rules
 
 - **Measured ROI before architectural change.** No framework swaps, state-management libraries, grid/dock replacements or build-tool changes without a _measured_ problem. "Defer" and "don't bother" are valid recommendations.
-- **A committed rule with no gate drifts silently.** Every convention gets a hook, a lint rule, or a drift test (the plans register has `tools/check-plans.py`; the no-attribution rule has the settings `attribution` block; the dev-server rule has the PreToolUse hook). When adding a rule, name its gate — or record explicitly that it has none yet, so the gap is a decision rather than an accident.
+- **A committed rule with no gate drifts silently.** Every convention gets a hook, a lint rule, or a drift test (the plans register has `tools/check-plans.py`; the no-attribution rule has the settings `attribution` block; the dev-server rule has the PreToolUse hook). When adding a rule, name its gate — or record explicitly that it has none yet, so the gap is a decision rather than an accident. **And check the gate against a violation**: the dev-server hook silently missed `(pnpm dev …)` in a subshell for two stages because nobody fed it one.
 
 ## Git Workflow
 

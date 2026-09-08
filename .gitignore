@@ -41,3 +41,6 @@ apps/bridge/kv/
 # runs it on a fresh checkout). The vendored .proto sources and the buf breaking
 # baseline image stay tracked — the baseline is recorded state, not derivable output.
 packages/proto/src/gen/
+
+# Console stack runtime (PIDs + logs written by infra/up.sh)
+infra/run/

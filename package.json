@@ -1,6 +1,6 @@
 {
   "name": "salus-gui",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "description": "Web operations console for the Salus platform (SvelteKit SPA + TypeScript bridge)",
   "type": "module",

@@ -139,11 +139,16 @@ return, restart after a real stop, immediate stop at `lingerMs: 0`.
 One h2c Connect hub on `:56800` answering the whole catalog (the bridge's `portBase` rebase
 lands every service there). Doubles only what the console consumes: Admin (per-service status /
 metrics / seq-numbered `StreamLogs`), Network (registry, `GetAllStatus`/`GetAllMetrics`,
-aggregated logs + lifecycle + suite-snapshot streams), Session (roster + eject flips the row),
-Health/Therapy (fixture-fed query + subscribe surfaces), Protocol (catalog + assignment pull +
-`WatchAssignment` wake-ups). Deterministic: NDJSON fixtures + a virtual-clock `ScriptedStream`,
-so vitest asserts exact frames. This is what makes the entire app runnable offline and the test
-tier hermetic.
+aggregated logs + lifecycle), Session (roster + eject flips the row). Deterministic: a seeded
+generator where every value is a pure function of `(seed, service, tick)` — the discipline
+`SalusHealth`'s own simulator holds to — plus a virtual-clock `ScriptedStream`, so vitest asserts
+exact frames. This is what makes the app runnable offline and the test tier hermetic.
+
+**Health, Therapy and Protocol doubles land with the panels that consume them** (`v0.2.5`,
+`v0.2.6`), not here. That is the mock-fidelity rule applied to itself: a double's job is to
+answer the request its consumer actually makes, and inventing query shapes before a panel exists
+produces fixtures shaped by guesswork — precisely the silent disagreement this stage exists to
+prevent. The generator and the request-following helpers land here, so each addition is small.
 
 **The mock's world follows the request.** A double that ignores the request's window, subject or
 filter — always answering "recent", always the same fixture set — makes the offline stack

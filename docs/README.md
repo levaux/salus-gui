@@ -1,19 +1,19 @@
 # salus-gui documentation
 
 **One rule: a document belongs here when a reader consults it to understand what the console
-does *today*.** Reference for built state, and the runbooks for operating it. Nothing
+does _today_.** Reference for built state, and the runbooks for operating it. Nothing
 forward-looking.
 
 The rule exists because a folder that holds shipped-state reference and proposals at once gives
 the reader no way to tell which they have opened — they look identical from the filename. Three
 neighbours carry the rest:
 
-| Folder | Holds | Test |
-|---|---|---|
-| **`docs/`** | reference + runbooks | *is it built?* |
-| [`docs/plans/`](plans/) | the work lifecycle — backlog, running, completed | *is it a stage ladder?* |
-| [`research/`](../research/) | open questions, option spaces | *is the question still open?* |
-| [`commit-history.md`](commit-history.md) | the release ledger | *did it ship, and when?* |
+| Folder                                   | Holds                                            | Test                          |
+| ---------------------------------------- | ------------------------------------------------ | ----------------------------- |
+| **`docs/`**                              | reference + runbooks                             | _is it built?_                |
+| [`docs/plans/`](plans/)                  | the work lifecycle — backlog, running, completed | _is it a stage ladder?_       |
+| [`research/`](../research/)              | open questions, option spaces                    | _is the question still open?_ |
+| [`commit-history.md`](commit-history.md) | the release ledger                               | _did it ship, and when?_      |
 
 A document that is **partly** forward-looking still leaves: split it, keep the shipped-state
 half, and send the proposal half to the backlog or `research/`.

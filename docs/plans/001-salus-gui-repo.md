@@ -24,7 +24,7 @@ both the deterministic mock and a real running Salus fleet.
    `protocol: 'connect' | 'grpc-web'`, a one-line config change if a proxy ever fronts the fleet.
    Record as `docs/adr/001-bridge-vs-edge-proxy.md`.
 2. **Two planes.** The bridge dials services directly over h2c (operator plane). The JWT +
-   ext_authz Envoy path is exercised only *deliberately*, by the simulation panels of the next
+   ext_authz Envoy path is exercised only _deliberately_, by the simulation panels of the next
    plan — never as the console's own transport.
 3. **Vendored protos at a pinned commit — not a submodule.** `tools/sync-protos.ts` copies
    `../salus/src/proto/Salus/*.proto` (all 10, `EdgeControl.proto` included even though it has no
@@ -41,10 +41,11 @@ both the deterministic mock and a real running Salus fleet.
    buf toolchain — so there is nothing to diff and **no regenerate-and-diff CI gate**: `pnpm gen`
    runs before typecheck and everything after depends on it. The distinction that decides what
    may be ignored: `.buf-image-prev.binpb`, the wire-compat baseline, **stays tracked** — it is
-   *recorded state* (the previous proto image), not derivable from the current tree, and deleting
+   _recorded state_ (the previous proto image), not derivable from the current tree, and deleting
    it would silently disarm the breaking gate. Two CI gates remain: `sync-protos:check`
    (unintentional drift, needs no Salus checkout) and `buf breaking` against that baseline
    (intentional-but-incompatible bumps forced through review).
+
 4. **Streaming shapes.** The browser consumes unary + server-stream only. Client/bidi-stream RPCs
    (`StreamHealth`, `StreamTherapy` — the Edge's acknowledged ingest sessions) are never
    forwarded; the console observes their effects through the query/subscribe surfaces.
@@ -67,6 +68,7 @@ both the deterministic mock and a real running Salus fleet.
 ## Staged path
 
 ### v0.1.1 — Workspace + toolchain + CI skeleton
+
 pnpm workspace (`packages/*`, `apps/*`), root `package.json` (private, `type: module`,
 `packageManager: pnpm@9.x`, `engines.node >= 22`, the script surface: `dev`, `dev:bridge`,
 `dev:mock`, `dev:stack`, `dev:stack:mock`, `build`, `gen`, `sync-protos[:check]`, `typecheck`,
@@ -77,13 +79,19 @@ solution `tsconfig.json` (project references; `apps/web` deliberately excluded �
 owns it), eslint flat config (typescript-eslint + svelte; `no-console` error everywhere except
 the bridge, which logs structured stdout), prettier + svelte plugin, `.github/workflows/ci.yml`
 (corepack → pnpm cache → install → `tools/check-plans.py` (the plans-lint gate, stdlib-only so
-it needs no install step) → lint → typecheck → **`pnpm check`** (svelte-check — decision 6);
-later stages append their gates in front: the proto drift + codegen + breaking steps at v0.1.2,
-`pnpm test` and `pnpm build` at v0.1.6). A follow-on for the lint itself: a vitest suite feeding
-`check-plans.py --root` violating fixture trees, proving each register rule *fails* when broken.
-Root scripts include `check` → `pnpm --filter @salus-gui/web check`.
+it needs no install step, and it runs before install for that reason) → lint).
+Later stages append their gates: the proto drift + codegen + breaking steps **and `typecheck`**
+at v0.1.2, then `pnpm check` (svelte-check — decision 6) + `pnpm test` + `pnpm build` at v0.1.6.
+**`typecheck` and `check` are root scripts from this stage but not yet CI steps** — `tsc -b`
+refuses a solution with no project references (TS18002) and there is no TypeScript source until
+v0.1.2, and `pnpm --filter @salus-gui/web` cannot resolve before `apps/web` exists at v0.1.6.
+A step that fails for want of its target gates nothing; each joins the pipeline in the stage
+that gives it something to check.
+A follow-on for the lint itself: a vitest suite feeding `check-plans.py --root` violating
+fixture trees, proving each register rule _fails_ when broken.
 
 ### v0.1.2 — `@salus-gui/proto`: vendoring pipeline + codegen + catalogs
+
 `tools/sync-protos.ts` (source `../salus/src/proto/Salus`, `SALUS_PROTO_SRC` override; `sync` +
 `--check` modes, pure `node:` builtins) + `salus-commit.lock`; `buf.yaml` (module root
 `vendor/salus`, lint `STANDARD`, breaking `WIRE_JSON`) + `buf.gen.yaml` (protoc-gen-es,
@@ -100,10 +108,13 @@ own `--port`, harness convention 58070); `mutating.ts` `MUTATING_RPCS` — a han
 `DrainAll`/`ShutdownAll`/`Reset`, `SetTrace`/`SetDebug`, the Protocol operator writes
 (`ImportProtocolArtifact`/`PublishProtocolRevision`/`AllocateProtocol`),
 `ApplyReconciliationDecision`, and the EdgeApplication mutators (`StartRoutine`/`SkipRoutine`);
-property tests (fast-check) on the choke point; the three proto gates wired into CI; baseline
+property tests (fast-check) on the choke point; the two proto gates wired into CI
+(`sync-protos:check`, `buf breaking`) plus `pnpm gen` ahead of them and **`pnpm typecheck`**,
+which becomes real here — this package is the solution's first project reference; baseline
 `.buf-image-prev.binpb` committed.
 
 ### v0.1.3 — `@salus-gui/theme` + `@salus-gui/streams`
+
 Theme: `tokens.css` (spacing/radius/type — UI face + monospace for all numbers, severity colors),
 `light.css`/`dark.css`, `env-accent.css` (dev / staging / production accent — the console must
 never let an operator mistake a production fleet for a dev one), `applyTheme()` writing
@@ -124,6 +135,7 @@ cheap, a re-snapshot is not. Pin the five cases — shared start, linger stop, r
 return, restart after a real stop, immediate stop at `lingerMs: 0`.
 
 ### v0.1.4 — `@salus-gui/mock-salus`: the deterministic fleet double
+
 One h2c Connect hub on `:56800` answering the whole catalog (the bridge's `portBase` rebase
 lands every service there). Doubles only what the console consumes: Admin (per-service status /
 metrics / seq-numbered `StreamLogs`), Network (registry, `GetAllStatus`/`GetAllMetrics`,
@@ -135,7 +147,7 @@ tier hermetic.
 
 **The mock's world follows the request.** A double that ignores the request's window, subject or
 filter — always answering "recent", always the same fixture set — makes the offline stack
-*silently* disagree with the real fleet, and the disagreement surfaces as an empty panel nobody
+_silently_ disagree with the real fleet, and the disagreement surfaces as an empty panel nobody
 can explain. Upstream hit exactly this three ways in one pass (a historical range answered with
 bars ending at `now`, a run's configured date range ignored, a fixed symbol list answered for
 any universe). So every generated answer is anchored to what was asked: a `QueryHealthSamples`
@@ -143,6 +155,7 @@ window returns samples that genuinely live in it, a subject-scoped query answers
 subject, and an empty result is a real empty result. Locked with tests, per gap.
 
 ### v0.1.5 — `apps/bridge`: `salus-bridged` (`:56400`)
+
 `node:http2` `createSecureServer` (mkcert cert from `apps/bridge/certs/`, refuses to start
 without one; CI self-signs a throwaway), CORS for loopback dev origins, `/rpc` generic Connect ⇄
 gRPC forward walking each catalog entry's method descriptors (unary + server-stream; client/bidi
@@ -166,6 +179,7 @@ vitest: forward guard, header hygiene, KV round-trip, read-only refusal, disconn
 classification — the async ones awaiting real completion rather than a sleep (decision 6).
 
 ### v0.1.6 — `apps/web` + `@salus-gui/ui-kit` seed: the SPA shell + first live panel
+
 SvelteKit SPA (`adapter-static`, `ssr = false`, fallback `index.html`), Vite dev proxy for
 `/rpc`/`/kv`/`/bridge` → `https://localhost:56400` (and `VITE_RPC_ORIGIN` for the direct-h2
 path), theme wiring, nav-rail shell + module registry, the singleton transport + connection
@@ -175,9 +189,11 @@ component, one grid wrapper (all blotters go through it — the swap seam for th
 dock deferred to the next plan if the first panels don't need it. **The proving panel**: fleet
 status (registry + per-service status/metrics, conflated) and the aggregated live log view
 (`Network.StreamLogs` with seq resume) — the full path browser → bridge → fleet exercised
-against mock and real. CI gains `pnpm test` + `pnpm build` (packages → web → bridge).
+against mock and real. CI gains `pnpm check` (svelte-check, now that there is a Svelte app to
+check), `pnpm test` and `pnpm build` (packages → web → bridge).
 
 ### v0.2.0 — Release
+
 `v0.2.0 Release — workspace scaffold, proto pipeline, bridge, SPA shell` per the CLAUDE.md
 release ritual (ff-only to main, annotated tag). `docs/dev-setup.md` written (Node/pnpm/mkcert,
 codegen-before-first-typecheck, the three-terminal mock stack, pointing at a real fleet);

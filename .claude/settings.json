@@ -46,17 +46,8 @@
       "WebFetch(domain:stackoverflow.com)",
       "WebFetch(domain:developer.mozilla.org)"
     ],
-    "ask": [
-      "Bash(git push:*)",
-      "Bash(git reset --hard:*)",
-      "Bash(git clean:*)"
-    ],
-    "deny": [
-      "Bash(rm -rf:*)",
-      "Bash(rm -fr:*)",
-      "Bash(git push --force:*)",
-      "Bash(git push -f:*)"
-    ]
+    "ask": ["Bash(git push:*)", "Bash(git reset --hard:*)", "Bash(git clean:*)"],
+    "deny": ["Bash(rm -rf:*)", "Bash(rm -fr:*)", "Bash(git push --force:*)", "Bash(git push -f:*)"]
   },
   "attribution": {
     "commit": "",

@@ -1,0 +1,8 @@
+{
+  "//": [
+    "Solution file: `tsc -b` builds every referenced project. Each package adds its reference in the stage that creates it (plan 001); the first is packages/proto at v0.1.2, which is also when `pnpm typecheck` becomes a real CI gate — tsc refuses an empty solution (TS18002), and a gate with nothing to check gates nothing.",
+    "apps/web is deliberately absent and stays absent: SvelteKit generates its own tsconfig, and tsc does not read .svelte script blocks at all. That surface belongs to svelte-check (`pnpm check`, CI from v0.1.6)."
+  ],
+  "files": [],
+  "references": []
+}

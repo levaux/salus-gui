@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": true,
+    "forceConsistentCasingInFileNames": true,
+
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "composite": true,
+
+    "paths": {
+      "@salus-gui/proto": ["./packages/proto/src/index.ts"],
+      "@salus-gui/proto/*": ["./packages/proto/src/*"],
+      "@salus-gui/streams": ["./packages/streams/src/index.ts"],
+      "@salus-gui/streams/*": ["./packages/streams/src/*"],
+      "@salus-gui/ui-kit": ["./packages/ui-kit/src/index.ts"],
+      "@salus-gui/ui-kit/*": ["./packages/ui-kit/src/*"],
+      "@salus-gui/theme": ["./packages/theme/src/index.ts"],
+      "@salus-gui/theme/*": ["./packages/theme/src/*"],
+      "@salus-gui/mock-salus": ["./packages/mock-salus/src/index.ts"],
+      "@salus-gui/mock-salus/*": ["./packages/mock-salus/src/*"]
+    }
+  }
+}

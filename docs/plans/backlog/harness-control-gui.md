@@ -19,7 +19,7 @@ scaffold train releases `v0.2.0`; depends on nothing else.
   `healthunit`, `therapyunit`, `therapydevice`, `therapycoordinator`, `therapystream`,
   `therapyledger`, `edgeintegration`, `edgesmoke`, `deliverymodel`, `identityreconciliation`,
   `fleetresilience`, `data`). `--plain` disables TTY redraw — linear output, right for piping.
-  Exit 0 iff every *ran* suite passed; infra-gated suites **skip** (never fail) when their probe
+  Exit 0 iff every _ran_ suite passed; infra-gated suites **skip** (never fail) when their probe
   (Envoy 58000 / Postgres 55432 / ClickHouse 59000) is down, and a pre-flight table says which.
 - **The output grammar** is line-based and stable: C++ `[test]` wire lines
   (`[test] <name> PASS|FAIL[ | detail]`), Python `CheckList` glyph lines (`✓` / `✗` / `⊘` +
@@ -28,11 +28,11 @@ scaffold train releases `v0.2.0`; depends on nothing else.
   `Artifacts.finish()`) exist but only 4 of 31 suites emit them today.
 - **The fullest end-to-end flow** is `test/EdgeApp/run_test.py`: Postgres + Envoy up; Session
   (57020, `--authz-http-port 57021`), Authentication (57010, `--signing-key
-  infra/envoy/keys/jwt-test.key`, `--jwks-http-port 57011`), Protocol (57050, `--records-dsn`);
+infra/envoy/keys/jwt-test.key`, `--jwks-http-port 57011`), Protocol (57050, `--records-dsn`);
   then `bin/edge --port 58070 --application-control --vault-path … --protocol-sync
-  --auth-secret …` — readiness marker on stdout: **`Application control ready.`** — and drives
+--auth-secret …` — readiness marker on stdout: **`Application control ready.`** — and drives
   `Salus.EdgeApplication` on `localhost:58070`: `ListDueRoutines → StartRoutine → idempotent
-  retry → SkipRoutine → GetApplicationState`, cross-checked against sqlite (vault) and Postgres.
+retry → SkipRoutine → GetApplicationState`, cross-checked against sqlite (vault) and Postgres.
 - **The live-control primitive** is `Session.EjectSession` (direct, 57020): the next edge call
   fails at ext_authz even though the JWT still verifies. The edge exposes exactly 11 routes;
   everything operator-grade is deliberately not edge-routed.
@@ -56,7 +56,7 @@ scaffold train releases `v0.2.0`; depends on nothing else.
 - **Reconcile, do not trust** — the load-bearing guardrail of this plan, and the one every stage
   gets wrong by default. Salus operations finish fast (a unit suite in under a second, a
   `StartRoutine` synchronously, a protocol publish in one call) and the console watches them
-  through a *pair* of surfaces — a list or subscription plus an authority — that can disagree
+  through a _pair_ of surfaces — a list or subscription plus an authority — that can disagree
   for a window. Four rules, each earned upstream against a real fleet:
   - **A subscription opened after the thing finished never emits.** Panels must not sit at
     "running 0%" forever waiting for a frame that cannot come: a **fast-finish watchdog**
@@ -65,7 +65,7 @@ scaffold train releases `v0.2.0`; depends on nothing else.
     the terminal result lands, rather than trusting the first read.
   - **Never fake an unpopulated field.** Where a backend leaves a state field empty, a
     client-side heuristic that "looks right" is worse than nothing — upstream painted FAILED
-    runs green from a timestamp fallback. Derive a *neutral* label instead and let the real one
+    runs green from a timestamp fallback. Derive a _neutral_ label instead and let the real one
     light up when the backend populates it. This is the same honesty class as `⊘ SKIP` never
     being folded into green, below.
   - **Fire-and-forget loads need a supersede guard.** A slow response for run A landing after
@@ -75,6 +75,7 @@ scaffold train releases `v0.2.0`; depends on nothing else.
 ## Staged path
 
 ### v0.2.1 — Fleet observability panels
+
 The Operate module: service grid (Network registry + `GetAllStatus`/`GetAllMetrics`, conflated),
 per-service Admin drawer (`Ping`/`GetStatus`/`GetMetrics`/`GetConfig(redacted)`,
 `SetTrace`/`SetDebug`, `Drain` — mutators gated), the aggregated log console
@@ -83,6 +84,7 @@ per-service Admin drawer (`Ping`/`GetStatus`/`GetMetrics`/`GetConfig(redacted)`,
 stream rates; mock scenarios for disconnect/resume.
 
 ### v0.2.2 — Infra lifecycle control
+
 Bridge `/infra` surface: structured status (bridge-side TCP probes of 58000/58009/55432/59000/
 59123 + Envoy admin `/ready` proxy) and lifecycle actions shelling
 `../salus/infra/{envoy,db}/{up,down,status}.sh` with streamed output. GUI stack panel: one row
@@ -90,24 +92,27 @@ per stack, states, up/down buttons (audited; refused in read-only mode). This is
 automated elements" substrate — the harness console's preflight reuses it.
 
 ### v0.2.3 — The regression-harness console
+
 Bridge `/harness` surface: a **typed suite catalog** (the 31 keys + display names + descriptions
-+ infra gating, with a vitest **drift gate** that parses `test/run_all.py`'s registry and fails
-when the catalog and the registry disagree); a run spawner (`python3 test/run_all.py --plain
+
+- infra gating, with a vitest **drift gate** that parses `test/run_all.py`'s registry and fails
+  when the catalog and the registry disagree); a run spawner (`python3 test/run_all.py --plain
 [--only k]…`, forwarded flags whitelisted: `--skip`, `--verbose`, `--diag-level`,
-`--warn-as-error`, `--no-speed`, `--iterations`); live stdout streamed to the browser; a **line
-classifier** turning the output grammar into a structured run model (suite open/close/skip,
-check rows with pass/fail/detail, counts, elapsed, master verdict from exit code) — classifier
-fixtures are **recorded transcripts of real runs**, committed, so grammar drift is a red test,
-not a silent mis-render; run history (NDJSON + rerun-with-same-selection); artifact ingestion
-(`summary.json`/`junit.xml`) where a suite emits them. The stream-vs-authority pairing here is
-the run's live output vs. its exit code, and a fast suite closes before a late-attaching viewer
-sees a line — so the run model's terminal state comes from the **process exit**, watchdog-polled
-per the reconcile guardrail, never inferred from the output stream falling quiet. GUI: suite picker with infra badges,
-preflight card (probes + one-click `/infra` bring-up of whatever the selection needs), live run
-view, history. **This stage is the first deliverable of the repo's purpose: the full regression
-matrix launched, watched, and dispositioned from the dashboard.**
+  `--warn-as-error`, `--no-speed`, `--iterations`); live stdout streamed to the browser; a **line
+  classifier** turning the output grammar into a structured run model (suite open/close/skip,
+  check rows with pass/fail/detail, counts, elapsed, master verdict from exit code) — classifier
+  fixtures are **recorded transcripts of real runs**, committed, so grammar drift is a red test,
+  not a silent mis-render; run history (NDJSON + rerun-with-same-selection); artifact ingestion
+  (`summary.json`/`junit.xml`) where a suite emits them. The stream-vs-authority pairing here is
+  the run's live output vs. its exit code, and a fast suite closes before a late-attaching viewer
+  sees a line — so the run model's terminal state comes from the **process exit**, watchdog-polled
+  per the reconcile guardrail, never inferred from the output stream falling quiet. GUI: suite picker with infra badges,
+  preflight card (probes + one-click `/infra` bring-up of whatever the selection needs), live run
+  view, history. **This stage is the first deliverable of the repo's purpose: the full regression
+  matrix launched, watched, and dispositioned from the dashboard.**
 
 ### v0.2.4 — The end-to-end platform session (manual, with automated elements)
+
 A bridge **session orchestrator** generalizing the EdgeApp flow into a declared process plan:
 preflight (db + envoy via `/infra`) → seed credentials → Session / Authentication / Protocol
 (later + Health/Therapy/Network) from `../salus/bin` with the harness's flags → `bin/edge
@@ -125,6 +130,7 @@ harness run the console exists to host; a one-click "scripted walk" of the same 
 automation follow-on, not the point.
 
 ### v0.2.5 — Experimentation: control surfaces
+
 Session panel (roster/detail, edge bindings, presence; **EjectSession** with the observable
 consequence — the panel invites re-driving the device plane to watch the denial); Protocol
 operations (Import → Validate (findings with stable field paths rendered) → Publish → Allocate
@@ -134,11 +140,13 @@ crosses verbatim), decode/inspect claims, then **act-as-client** — drive the 1
 the minted token to exercise JWT + ext_authz end to end, including post-ejection refusal.
 
 ### v0.2.6 — Experimentation: data-plane observation
+
 Health: `SubscribeHealthEvents` live feed + `QueryHealthSamples`/`QueryHealthSummaries` (bounded,
 subject-scoped) + `GetHealthStats`; Therapy: active-therapy registry (`SubscribeActiveTherapies`)
-+ committed-event feed + `QueryTherapyMetrics`/`QueryTherapySessions`; uPlot series views over
-the query results. Paired with a running `EdgeSmoke`/`EdgeIntegration`-style session this closes
-the loop: drive the Edge from one panel, watch its telemetry commit in another.
+
+- committed-event feed + `QueryTherapyMetrics`/`QueryTherapySessions`; uPlot series views over
+  the query results. Paired with a running `EdgeSmoke`/`EdgeIntegration`-style session this closes
+  the loop: drive the Edge from one panel, watch its telemetry commit in another.
 
 **Expect transient duplicate rows, and dedup keep-last at the store choke-point.** Salus's
 Health and Therapy tables are ClickHouse **`ReplacingMergeTree` keyed by `event_id`**
@@ -151,12 +159,13 @@ positional keys for append-only display feeds whose sequence is backend-owned.
 
 **Establish each query RPC's ordering and limit semantics before building a window fetch.**
 Upstream shipped a four-year discontinuity into one chart by assuming a bare limit returns the
-newest rows when the backend ordered ascending and applied the limit from the *oldest* — the fix
+newest rows when the backend ordered ascending and applied the limit from the _oldest_ — the fix
 was to anchor the window on a coverage probe rather than on a bare limit. Read the Salus query
 handlers (or measure them) rather than inferring, and where a series mixes a backfill with a
 live tail, drop an inconsistent older era at an epoch-sized gap rather than rendering both.
 
 ### v0.3.0 — Release
+
 `v0.3.0 Release — fleet ops, regression console, end-to-end session, experimentation surfaces`.
 `docs/` gains the harness-integration reference (suite catalog, output grammar, orchestrator
 plan format); commit-history v0.2 series prose finalized.
@@ -168,11 +177,11 @@ plan format); commit-history v0.2 series prose finalized.
   line-for-line in verdict; the v0.2.4 session panel completes the EdgeApp loop with the same
   dispositions `test/EdgeApp/run_test.py` asserts; eject-then-denied observed via the token
   workbench.
-- The read-only switch, flipped mid-session, refuses the next mutator of *every* kind (RPC,
+- The read-only switch, flipped mid-session, refuses the next mutator of _every_ kind (RPC,
   infra action, harness run, session step) — one vitest contract per surface.
 - **The reconcile guardrail is verified by the fast path, not the slow one.** Run the quickest
   always-run suite (`harness`) and a synchronous `StartRoutine` and confirm each reaches its
-  terminal state in the GUI *without* a manual refresh — the watchdog case is invisible on
+  terminal state in the GUI _without_ a manual refresh — the watchdog case is invisible on
   anything slow enough to be comfortable.
 
 ## Risks / gotchas

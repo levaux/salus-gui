@@ -8,11 +8,11 @@ A document belongs in `research/` while its **question is still open** — no de
 taken that the thing should be built, and the output is evidence or an option space rather than
 a stage ladder. That is the line against the two folders either side:
 
-| | Question | Output |
-|---|---|---|
-| `research/` | still open | evidence, options, invariants to prove later |
-| [`docs/plans/backlog/`](../docs/plans/) | settled in principle, only scheduling is pending | a plan that could be promoted tomorrow |
-| [`docs/`](../docs/) | answered and shipped | reference for what exists today |
+|                                         | Question                                         | Output                                       |
+| --------------------------------------- | ------------------------------------------------ | -------------------------------------------- |
+| `research/`                             | still open                                       | evidence, options, invariants to prove later |
+| [`docs/plans/backlog/`](../docs/plans/) | settled in principle, only scheduling is pending | a plan that could be promoted tomorrow       |
+| [`docs/`](../docs/)                     | answered and shipped                             | reference for what exists today              |
 
 ## The promotion path
 

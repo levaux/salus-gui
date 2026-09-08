@@ -10,7 +10,7 @@ only — no product code yet. The architecture (a SvelteKit 2 + Svelte 5 SPA plu
 bridge process speaking Connect ⇄ gRPC to the Salus fleet) and the build-out are specified in the
 two founding plans:
 
-- [docs/plans/backlog/salus-gui-repo.md](docs/plans/backlog/salus-gui-repo.md) — the `v0.1.x` workspace-scaffold
+- [docs/plans/001-salus-gui-repo.md](docs/plans/001-salus-gui-repo.md) — the `v0.1.x` workspace-scaffold
   train: pnpm monorepo, the proto vendoring pipeline (pinned to a Salus commit, buf codegen,
   drift + wire-compat gates), the five packages, the bridge (`salus-bridged`, `:56400`), the SPA
   shell with a first live fleet panel, and CI.

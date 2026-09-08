@@ -1,0 +1,16 @@
+node_modules/
+dist/
+build/
+.svelte-kit/
+coverage/
+test-results/
+pnpm-lock.yaml
+
+# Vendored upstream protos and generated codegen are not ours to format.
+packages/proto/vendor/
+packages/proto/src/gen/
+
+# Partly generated: `tools/plans.py render-index` owns the ## Backlog section,
+# and prettier's table alignment makes the generator's output read as stale
+# drift on every format run. One authority per file — here it is the generator.
+docs/plans/INDEX.md

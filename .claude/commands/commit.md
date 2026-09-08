@@ -30,5 +30,5 @@ ships versioned product work or it doesn't, and the subject says which:
 Never leave a non-versioned commit prefix-less, and never use a `type:` prefix on a
 versioned product commit. Do NOT add `Co-Authored-By` or any contributor-attribution lines.
 
-Keep the body terse (under ~30 lines): lead with the *what* and the *why*; skip exhaustive
+Keep the body terse (under ~30 lines): lead with the _what_ and the _why_; skip exhaustive
 file enumeration — the diff already has those.

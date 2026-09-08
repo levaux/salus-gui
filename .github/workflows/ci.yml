@@ -1,0 +1,74 @@
+# ci.yml — the v0.1 CI pipeline (plan 001).
+#
+# One job, one straight line: a scaffold does not yet have enough independent
+# surface area to make splitting it worthwhile. Split when build time or
+# flakiness isolation actually demands it.
+#
+# Step → gate mapping, as of v0.1.1:
+#   plans-lint          → docs/plans/ register consistency (numbered ⟺ listed
+#                          in INDEX, Status lines, backlog freshness, no
+#                          dangling plan links). Stdlib-only Python, so it runs
+#                          BEFORE install — it needs nothing this workflow has
+#                          not already checked out.
+#   lint                → eslint + prettier --check
+#
+# Steps later stages add (each named in the plan's stage that owns it):
+#   v0.1.2  sync-protos:check (vendor drift vs. salus-commit.lock)
+#           gen               (buf generate — src/gen is NOT committed, so
+#                              everything after depends on this step; there is
+#                              no regenerate-and-diff gate because there is no
+#                              committed output to drift)
+#           buf breaking      (wire-compat vs. the tracked baseline image)
+#           typecheck         (tsc -b — joins here rather than at v0.1.1
+#                              because tsc refuses a solution with no project
+#                              references, and v0.1.1 has no TypeScript source)
+#   v0.1.6  check             (svelte-check — tsc does not read .svelte script
+#                              blocks; it joins CI when apps/web exists)
+#           test              (vitest across packages and apps)
+#           build             (packages → web → bridge)
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Plans register lint (tools/check-plans.py)
+        # Stdlib-only by design: a drift gate that needs a venv goes quiet on
+        # exactly the machine where nobody set one up.
+        run: python3 tools/check-plans.py
+
+      # Must precede setup-node's `cache: pnpm` below — that option shells out
+      # to `pnpm store path` to compute the cache key, so pnpm needs to already
+      # be on PATH. `packageManager` in the root package.json pins the exact
+      # version corepack activates.
+      - name: Enable corepack (pnpm)
+        run: corepack enable
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint (eslint + prettier --check)
+        run: pnpm lint

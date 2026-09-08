@@ -1,0 +1,42 @@
+{
+  "name": "salus-gui",
+  "version": "0.1.1",
+  "private": true,
+  "description": "Web operations console for the Salus platform (SvelteKit SPA + TypeScript bridge)",
+  "type": "module",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @salus-gui/web dev",
+    "dev:bridge": "pnpm --filter @salus-gui/bridge dev",
+    "dev:mock": "pnpm --filter @salus-gui/mock-salus dev",
+    "dev:stack": "BRIDGE_BACKEND_PORT=57000 VITE_RPC_ORIGIN=https://localhost:56400 pnpm --parallel --filter @salus-gui/bridge --filter @salus-gui/web run dev",
+    "dev:stack:mock": "VITE_RPC_ORIGIN=https://localhost:56400 pnpm --parallel --filter @salus-gui/mock-salus --filter @salus-gui/bridge --filter @salus-gui/web run dev",
+    "build": "pnpm -r --filter=./packages/* build && pnpm --filter @salus-gui/web build && pnpm --filter @salus-gui/bridge build",
+    "gen": "pnpm --filter @salus-gui/proto gen",
+    "sync-protos": "pnpm --filter @salus-gui/proto sync",
+    "sync-protos:check": "pnpm --filter @salus-gui/proto sync:check",
+    "typecheck": "tsc -b",
+    "check": "pnpm --filter @salus-gui/web check",
+    "test": "pnpm -r --filter=./packages/* --filter=./apps/* test",
+    "lint": "eslint . && prettier --check .",
+    "format": "prettier --write .",
+    "plans": "python3 tools/plans.py",
+    "plans:lint": "python3 tools/check-plans.py"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@types/node": "^22.10.2",
+    "eslint": "^9.17.0",
+    "eslint-plugin-svelte": "^2.46.1",
+    "globals": "^15.14.0",
+    "prettier": "^3.4.2",
+    "prettier-plugin-svelte": "^3.3.2",
+    "svelte": "5.56.3",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.1"
+  }
+}

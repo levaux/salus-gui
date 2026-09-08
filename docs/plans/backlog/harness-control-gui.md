@@ -41,6 +41,17 @@ retry → SkipRoutine → GetApplicationState`, cross-checked against sqlite (va
   `Admin.StreamLogs` / `Network.StreamLogs` / `StreamLifecycleEvents` / `StreamSuiteSnapshot`
   are seq-resumable structured feeds, ANSI-free by contract.
 
+## Design reference
+
+The operator surface this train builds is specified in
+[design/harness-control-gui/README.md](../../../design/harness-control-gui/README.md) (HTML mock
+alongside it): a single-viewport console — **Insights** (a fixed-position topology schematic of
+service **chips** with an Inspector drawer) over a tabbed, drag-configurable **Workbench**
+(Monitor / Tests / Simulate). Each stage below names the panels it realises; the README's
+_Data contracts_ table is the binding, its _Tokens_ map onto `@salus-gui/theme`, and its
+§7 _Deviations_ are resolved at promotion — **the plan's ground truth wins over the mock**,
+and the resolution is recorded in the README, not by redrawing.
+
 ## Guardrails (hold for every stage)
 
 - **Everything mutating is `MUTATING_RPCS`-listed, read-only-guardable, and audited** — and the
@@ -83,6 +94,11 @@ per-service Admin drawer (`Ping`/`GetStatus`/`GetMetrics`/`GetConfig(redacted)`,
 `Admin.StreamLogs` via `salus-admin-target`. Proves the dock + grid + log components at real
 stream rates; mock scenarios for disconnect/resume.
 
+**Design →** Insights: topology chips (status rail, pill, `uptime · seen · inflt`, RPC/s + I/O
+sparks) + Inspector (facts, Admin actions, events, log slice); Monitor: Registry, SuiteSnapshot
+(Focus, Reset), Logs (level chips, pause/follow, seq meta), Lifecycle. Header summary pills;
+footer snapshot state; ⌘K palette (per-service Admin commands, DrainAll/ShutdownAll armed).
+
 ### v0.2.2 — Infra lifecycle control
 
 Bridge `/infra` surface: structured status (bridge-side TCP probes of 58000/58009/55432/59000/
@@ -90,6 +106,11 @@ Bridge `/infra` surface: structured status (bridge-side TCP probes of 58000/5800
 `../salus/infra/{envoy,db}/{up,down,status}.sh` with streamed output. GUI stack panel: one row
 per stack, states, up/down buttons (audited; refused in read-only mode). This is the "some
 automated elements" substrate — the harness console's preflight reuses it.
+
+**Design →** Header infra pills (Envoy / Postgres / ClickHouse) become `/infra` status +
+up/down; Postgres / ClickHouse / Envoy chips bind to the probes; Simulate › Breakers cards
+(state · consequence · break/restore) — infra rows via `/infra`, service rows via
+`Admin.Shutdown` + relaunch.
 
 ### v0.2.3 — The regression-harness console
 
@@ -111,6 +132,12 @@ Bridge `/harness` surface: a **typed suite catalog** (the 31 keys + display name
   view, history. **This stage is the first deliverable of the repo's purpose: the full regression
   matrix launched, watched, and dispositioned from the dashboard.**
 
+**Design →** Tests tab: Suites matrix (profile chips, `needs E P C` badges greying to `⊘` when a
+probe is down, per-row `▶`, command preview, run selected / run all / stop), Live terminal pane
+(framed banner, `State [n%]` bar, Components, Diagnostics, Results, close line), Artifacts +
+History. Flags re-cut to the whitelist (README §7.1). Terminal state from process exit,
+watchdog-polled — never from the stream going quiet.
+
 ### v0.2.4 — The end-to-end platform session (manual, with automated elements)
 
 A bridge **session orchestrator** generalizing the EdgeApp flow into a declared process plan:
@@ -129,6 +156,11 @@ catalog entry's dynamic target binds to the session's Edge port. This is the man
 harness run the console exists to host; a one-click "scripted walk" of the same steps is the
 automation follow-on, not the point.
 
+**Design →** Simulate › session stepper re-cut to the EdgeApplication loop (`ListDueRoutines →
+StartRoutine → SkipRoutine → GetApplicationState`, README §7.2); the orchestrator's process plan
+renders as the Live pane's Components block (state · port · pid · log tail); Edge-fleet chip
+footer shows the session's Edge.
+
 ### v0.2.5 — Experimentation: control surfaces
 
 Session panel (roster/detail, edge bindings, presence; **EjectSession** with the observable
@@ -138,6 +170,10 @@ pipeline + `WatchAssignment` live view); the **token workbench**: `Authenticate`
 Envoy edge (`:58000` — the bridge forwards it as just another catalog target; `Authorization`
 crosses verbatim), decode/inspect claims, then **act-as-client** — drive the 11 edge routes with
 the minted token to exercise JWT + ext_authz end to end, including post-ejection refusal.
+
+**Design →** Monitor › Sessions panel + Inspector sessions block with `eject` (armed); Envoy chip
+`ALLOW / DENY ALL` + `denied` counter as the observable consequence; the token workbench is new
+(not in the mock — draw it in the Inspector's action vocabulary).
 
 ### v0.2.6 — Experimentation: data-plane observation
 
@@ -164,6 +200,10 @@ was to anchor the window on a coverage probe rather than on a bare limit. Read t
 handlers (or measure them) rather than inferring, and where a series mixes a backfill with a
 live tail, drop an inconsistent older era at an epoch-sized gap rather than rendering both.
 
+**Design →** Simulate › Edge fleet (received vs committed bars, held Δ), HealthUnit generator
+card (seed · scale · metric · digest identity check), ClickHouse chip `received · committed ·
+held`; SuiteSnapshot `stalled` rows.
+
 ### v0.3.0 — Release
 
 `v0.3.0 Release — fleet ops, regression console, end-to-end session, experimentation surfaces`.
@@ -179,6 +219,9 @@ plan format); commit-history v0.2 series prose finalized.
   workbench.
 - The read-only switch, flipped mid-session, refuses the next mutator of _every_ kind (RPC,
   infra action, harness run, session step) — one vitest contract per surface.
+- Each stage's panels match the design reference by name and state vocabulary (glyphs, pills,
+  degraded-state copy); any departure is logged in `design/harness-control-gui/README.md` §7
+  before the stage's versioned commit.
 - **The reconcile guardrail is verified by the fast path, not the slow one.** Run the quickest
   always-run suite (`harness`) and a synchronous `StartRoutine` and confirm each reaches its
   terminal state in the GUI _without_ a manual refresh — the watchdog case is invisible on

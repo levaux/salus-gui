@@ -10,6 +10,13 @@ pnpm-lock.yaml
 packages/proto/vendor/
 packages/proto/src/gen/
 
+# Design references are intent, not product code: `support.js` is generated
+# bundle output from another toolchain and says "do not edit", and the .dc.html
+# is a template format whose whitespace is significant. Reformatting either
+# makes the next regeneration a diff and can change what the mock renders.
+# The README beside them is prose we do not own the line breaks of.
+design/
+
 # Partly generated: `tools/plans.py render-index` owns the ## Backlog section,
 # and prettier's table alignment makes the generator's output read as stale
 # drift on every format run. One authority per file — here it is the generator.

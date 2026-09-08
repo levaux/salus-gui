@@ -53,6 +53,10 @@ export default ts.config(
       'packages/proto/vendor/**',
       '**/node_modules/**',
       '**/test-results/**',
+      // Design mocks under design/ are a reference surface, not product code:
+      // the runtime beside them is generated bundle output from another
+      // toolchain. Linting it reports on code we neither wrote nor ship.
+      'design/**',
     ],
   },
   js.configs.recommended,

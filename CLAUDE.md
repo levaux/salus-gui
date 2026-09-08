@@ -8,15 +8,16 @@
 
 ## Repository map
 
-| Path                     | What is there                                                                                                                     |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| `docs/`                  | reference for **built state** only — see [docs/README.md](docs/README.md)                                                         |
-| `docs/plans/`            | the work lifecycle: `backlog/` → `NNN-*.md` → `completed/`; register in [INDEX.md](docs/plans/INDEX.md)                           |
-| `docs/commit-history.md` | the release ledger                                                                                                                |
-| `research/`              | open questions, not committed to — see [research/README.md](research/README.md)                                                   |
-| `tools/`                 | repo tooling (`plans.py`, `check-plans.py` — stdlib-only Python; `sync-protos.ts`)                                                |
-| `.claude/`               | agent settings, hooks and commands                                                                                                |
-| `packages/`, `apps/`     | the pnpm workspace — arrives with [salus-gui-repo.md](docs/plans/001-salus-gui-repo.md), each package/app carrying its own README |
+| Path                     | What is there                                                                                                                                                   |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docs/`                  | reference for **built state** only — see [docs/README.md](docs/README.md)                                                                                       |
+| `docs/plans/`            | the work lifecycle: `backlog/` → `NNN-*.md` → `completed/`; register in [INDEX.md](docs/plans/INDEX.md)                                                         |
+| `docs/commit-history.md` | the release ledger                                                                                                                                              |
+| `research/`              | open questions, not committed to — see [research/README.md](research/README.md)                                                                                 |
+| `design/`                | intent reference — the design mocks a plan executes against; not built state — see [design/harness-control-gui/README.md](design/harness-control-gui/README.md) |
+| `tools/`                 | repo tooling (`plans.py`, `check-plans.py` — stdlib-only Python; `sync-protos.ts`)                                                                              |
+| `.claude/`               | agent settings, hooks and commands                                                                                                                              |
+| `packages/`, `apps/`     | the pnpm workspace — arrives with [salus-gui-repo.md](docs/plans/001-salus-gui-repo.md), each package/app carrying its own README                               |
 
 ## Architecture (target — see the plans)
 
@@ -85,7 +86,7 @@ pnpm lint && pnpm typecheck && pnpm check && pnpm build   # check = svelte-check
 
 - **Use `./infra/up.sh` rather than `pnpm dev*` directly.** It detaches properly (a `pnpm dev*` child holding the caller's stdin hangs the invoking shell), records PIDs so `down.sh` can stop the _server_ rather than a fork of the script, checks the three prerequisites up front, and stops by PID tree — never by process group, which shares a group with the calling shell and takes it down too.
 - **Never run dev servers (`pnpm dev*`, `vite`, `tsx watch`) as foreground agent commands** — they don't exit, so a foreground call hangs the turn. A `PreToolUse` hook in [.claude/settings.json](.claude/settings.json) **denies** the foreground form mechanically, including inside a subshell or after `&&`, and allows `./infra/up.sh`, `run_in_background`, and one-shot builds.
-- **Gate commands must not be piped.** `pnpm lint | tail` hands you the pipeline's exit code, not lint's — run gates with `set -e` and no pipe, or a failure reads as a pass.
+- **Chain gates with `&&`, and never pipe one.** `pnpm lint | tail` hands you the pipeline's exit code, not lint's. **`set -e` does not abort in the agent shell and `${PIPESTATUS[0]}` reads empty under zsh** — both were measured, and both report a failing gate as a pass. `&&` is the only chaining verified to stop on failure and propagate the code; to keep output short, redirect to a file and `tail` it after the `&&`. This is not hypothetical: `v0.1.6` was committed and pushed with a red `eslint` and a flaky test because a `set -e` gate script printed its own success banner after a gate had already failed. **A gate you did not watch fail is a gate you have not run.**
 - Proto vendoring: `pnpm sync-protos` copies `../salus/src/proto/Salus/*.proto` into `packages/proto/vendor/salus/` and pins the source commit in `packages/proto/salus-commit.lock`; `pnpm sync-protos:check` is the CI drift gate; `buf breaking` against the committed baseline image is the wire-compat gate. **Generated output stays out of git, recorded state stays in it**: `src/gen/` is ignored and rebuilt, while `.buf-image-prev.binpb` is tracked — it is the previous proto image, not derivable from the tree, and losing it disarms the breaking gate.
 - **`tsc -b` does not check `.svelte` script blocks** — `pnpm check` (svelte-check) is the gate that does, and it is a distinct CI step. A wrong proto field path inside a component is invisible to typecheck.
 
@@ -153,6 +154,8 @@ The full ritual, step by step, is in [docs/plans/INDEX.md](docs/plans/INDEX.md#h
 ### Where a document belongs
 
 `docs/` is **reference for built state only** — the test is _is it built?_ A plan is a stage ladder and goes to `docs/plans/backlog/`; an open question goes to [research/](research/) and is promoted into the backlog when it resolves into something worth building. Mixed documents leave `docs/`: a file that is partly forward-looking splits, the shipped-state half staying and the proposal half becoming a backlog plan or a research note.
+
+A **design mock** — the intended look and behaviour of a surface a plan will build — goes to `design/<plan-name>/`, referenced from the plan's `## Design reference`; when the plan completes, what shipped is described in `docs/`, and the mock stays as the record of intent. `design/` is exempt from lint and prettier (see [.prettierignore](.prettierignore) and [eslint.config.js](eslint.config.js)): a mock is a reference artifact, and its runtime is generated output from another toolchain.
 
 ### Active Plans
 

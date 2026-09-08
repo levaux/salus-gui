@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;height:100%;background:#0a0d11;color:#dde4ec}
+body{font-family:'IBM Plex Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#dde4ec}a:hover{color:#fff}
+[data-salus]{--fs:12px;--fs-s:11px;--row:26px;--pad:10px;--gap:8px;--hdr:44px}
+[data-salus][data-density="comfortable"]{--fs:13px;--fs-s:12px;--row:34px;--pad:14px;--gap:12px;--hdr:52px}
+*::-webkit-scrollbar{width:8px;height:8px}*::-webkit-scrollbar-thumb{background:#2c3641;border-radius:4px}*::-webkit-scrollbar-track{background:transparent}
+input,button,select{font:inherit;color:inherit}
+button{cursor:pointer}
+input[type=range]{accent-color:#dde4ec;height:18px}
+@keyframes flow{to{stroke-dashoffset:-24}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes beat{0%{transform:scale(1);opacity:.7}70%,100%{transform:scale(3.2);opacity:0}}
+@keyframes fadein{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+</style>
+</helmet>
+<div ref="{{ rootRef }}" data-salus="1" data-density="{{ density }}" style="height:100vh;display:grid;grid-template-rows:auto {{ topFr }} 6px {{ botFr }} 28px;background:#0a0d11;color:#dde4ec;font-size:var(--fs);font-family:'IBM Plex Sans',system-ui,sans-serif;overflow:hidden;position:relative">
+
+<header style="display:flex;flex-wrap:wrap;align-items:center;gap:4px var(--gap);min-height:var(--hdr);padding:4px var(--pad);border-bottom:1px solid #222a34;background:#0f1318;min-width:0">
+  <div style="display:flex;align-items:baseline;gap:10px;flex:none">
+    <span style="font:600 15px/1 'IBM Plex Sans',sans-serif;letter-spacing:.22em;color:#fff">SALUS</span>
+    <span style="font:400 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#5b6673">control · localhost</span>
+  </div>
+  <div style="display:flex;gap:4px;margin-left:10px;flex-wrap:wrap">
+    <sc-for list="{{ summary }}" as="c" hint-placeholder-count="5">
+      <span title="{{ c.title }}" style="display:flex;align-items:center;gap:6px;height:22px;padding:0 8px;border:1px solid #222a34;border-radius:3px;font:400 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#93a0ae;white-space:nowrap"><span style="color:{{ c.color }}">{{ c.glyph }}</span><span style="color:#dde4ec">{{ c.value }}</span><span style="color:#5b6673">{{ c.label }}</span></span>
+    </sc-for>
+  </div>
+  <div style="flex:1;min-width:8px"></div>
+  <div style="display:flex;gap:6px;flex:none">
+    <sc-for list="{{ infraPills }}" as="p" hint-placeholder-count="3">
+      <button onClick="{{ p.toggle }}" title="{{ p.title }}" style="display:flex;align-items:center;gap:6px;height:24px;padding:0 8px;border:1px solid #222a34;background:#141920;border-radius:3px;font:400 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#93a0ae" style-hover="border-color:#2c3641;color:#dde4ec"><span style="color:{{ p.color }}">{{ p.glyph }}</span><span>{{ p.name }}</span><span style="color:#5b6673">:{{ p.port }}</span></button>
+    </sc-for>
+  </div>
+  <button onClick="{{ openPalette }}" title="Command palette" style="height:24px;padding:0 8px;border:1px solid #222a34;background:#141920;border-radius:3px;font:400 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#93a0ae;flex:none" style-hover="border-color:#2c3641;color:#dde4ec">⌘K</button>
+  <span style="font:400 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#5b6673;flex:none;min-width:90px;text-align:right">{{ clock }}</span>
+  <button onClick="{{ shutdownAll }}" title="Network.ShutdownAll — the platform kill switch" style="height:24px;padding:0 10px;border:1px solid rgba(255,107,107,.45);background:rgba(255,107,107,.06);border-radius:3px;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#ff6b6b;flex:none" style-hover="background:rgba(255,107,107,.16)">■ ShutdownAll</button>
+</header>
+
+<section style="display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,27%);gap:1px;background:#222a34;min-height:0;min-width:0">
+
+  <div style="display:flex;flex-direction:column;min-height:0;min-width:0;background:#0f1318;position:relative;overflow:hidden">
+    <div style="display:flex;align-items:center;gap:8px;height:var(--row);padding:0 var(--pad);border-bottom:1px solid #222a34;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#dde4ec;flex:none;white-space:nowrap;overflow:hidden"><span style="flex:none">─── Insights · Topology ───</span><span style="color:#5b6673;min-width:0;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis">57xxx service · 58xxx edge/test · stores off-scheme</span><span style="flex:1"></span><span style="color:#5b6673;overflow:hidden;text-overflow:ellipsis">{{ topoHint }}</span></div>
+    <div style="flex:1;min-height:0;padding:4px var(--pad)">
+      <svg viewBox="0 0 1180 360" preserveAspectRatio="xMidYMid meet" style="width:100%;height:100%;display:block">
+        <defs><pattern id="salus-grid" width="20" height="20" patternUnits="userSpaceOnUse"><path d="M20 0H0V20" style="fill:none;stroke:#131820;stroke-width:1"></path></pattern></defs>
+        <rect width="1180" height="360" style="fill:url(#salus-grid)"></rect>
+        <sc-for list="{{ links }}" as="l" hint-placeholder-count="0">
+          <path d="{{ l.d }}" style="{{ l.style }}"></path>
+        </sc-for>
+        <sc-for list="{{ linkLabels }}" as="ll" hint-placeholder-count="0">
+          <foreignObject x="{{ ll.lx }}" y="{{ ll.ly }}" width="{{ ll.w }}" height="14" style="overflow:visible;pointer-events:none">
+            <div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;text-align:center;font:400 11px/14px 'IBM Plex Mono',monospace;color:#5b6673;white-space:nowrap">{{ ll.t }}</div>
+          </foreignObject>
+        </sc-for>
+        <sc-for list="{{ nodes }}" as="n" hint-placeholder-count="0">
+          <g transform="{{ n.tf }}" onClick="{{ n.click }}" style="cursor:pointer">
+            <foreignObject x="0" y="0" width="{{ n.w }}" height="{{ n.h }}" style="overflow:visible">
+              <div xmlns="http://www.w3.org/1999/xhtml" style="width:{{ n.w }}px;height:{{ n.h }}px;box-sizing:border-box;display:flex;position:relative;overflow:hidden;background:linear-gradient(180deg,#141920,#0f1318);border:1px solid {{ n.border }};border-radius:7px;box-shadow:{{ n.shadow }};outline:{{ n.outline }};outline-offset:4px;cursor:pointer" style-hover="border-color:#3b4756">
+                <span style="width:3px;flex:none;align-self:stretch;background:{{ n.s }};box-shadow:0 0 12px -1px {{ n.s }}"></span>
+                <div style="flex:1;min-width:0;display:flex;flex-direction:column;padding:7px 9px 6px">
+                  <div style="display:flex;align-items:center;gap:7px;min-width:0">
+                    <span style="width:6px;height:6px;border-radius:50%;background:{{ n.s }};flex:none;position:relative"><span style="position:absolute;inset:0;border-radius:50%;background:{{ n.s }};animation:{{ n.beat }}"></span></span>
+                    <span style="flex:1;min-width:0;font:600 13px/1.1 'IBM Plex Sans',sans-serif;letter-spacing:-.01em;color:#dde4ec;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ n.title }}</span>
+                    <span style="flex:none;font:600 8px/1 'IBM Plex Mono',monospace;letter-spacing:.08em;padding:2px 4px;border-radius:3px;color:{{ n.s }};background:{{ n.pillBg }};border:1px solid {{ n.pillBorder }}">{{ n.pill }}</span>
+                  </div>
+                  <div style="margin-top:3px;font:400 9.5px/1.2 'IBM Plex Mono',monospace;color:#93a0ae;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ n.host }}<span style="color:#5fd7e0">{{ n.port }}</span> · {{ n.sub }}</div>
+                  <div style="display:flex;gap:8px;margin-top:6px">
+                    <sc-for list="{{ n.stats }}" as="st" hint-placeholder-count="3">
+                      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px"><span style="font:600 7.5px/1 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:#5b6673;white-space:nowrap">{{ st.k }}</span><b style="font:600 10.5px/1.2 'IBM Plex Mono',monospace;color:{{ st.color }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ st.v }}</b></div>
+                    </sc-for>
+                  </div>
+                  <sc-if value="{{ n.hasSparks }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;gap:8px;margin-top:6px;border-top:1px solid #1a2028;padding-top:5px">
+                      <div style="flex:1;min-width:0">
+                        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px"><span style="font:600 7.5px/1 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:#5b6673">rpc/s</span><b style="font:500 9px/1 'IBM Plex Mono',monospace;color:#dde4ec">{{ n.rpc }}</b></div>
+                        <svg viewBox="0 0 100 14" preserveAspectRatio="none" style="display:block;width:100%;height:14px;overflow:visible"><polyline points="{{ n.rpcPts }}" style="fill:none;stroke:{{ n.s }};stroke-width:1.2;vector-effect:non-scaling-stroke"></polyline></svg>
+                      </div>
+                      <div style="flex:1;min-width:0">
+                        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px"><span style="font:600 7.5px/1 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:#5b6673">i/o</span><b style="font:500 9px/1 'IBM Plex Mono',monospace;color:#dde4ec">{{ n.io }}</b></div>
+                        <svg viewBox="0 0 100 14" preserveAspectRatio="none" style="display:block;width:100%;height:14px;overflow:visible"><polyline points="{{ n.ioPts }}" style="fill:none;stroke:#5fd7e0;stroke-width:1.2;vector-effect:non-scaling-stroke"></polyline></svg>
+                      </div>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ n.hasFoot }}" hint-placeholder-val="{{ false }}">
+                    <div style="margin-top:6px;border-top:1px solid #1a2028;padding-top:5px;display:flex;flex-direction:column;gap:2px">
+                      <div style="font:400 9.5px/1.2 'IBM Plex Mono',monospace;color:{{ n.footColor }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ n.foot }}</div>
+                      <div style="font:400 9.5px/1.2 'IBM Plex Mono',monospace;color:{{ n.foot2Color }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ n.foot2 }}</div>
+                    </div>
+                  </sc-if>
+                </div>
+              </div>
+            </foreignObject>
+          </g>
+        </sc-for>
+      </svg>
+    </div>
+  </div>
+
+  <aside style="display:flex;flex-direction:column;min-height:0;min-width:0;background:#0f1318;overflow:hidden">
+    <div style="display:flex;align-items:center;gap:8px;height:var(--row);padding:0 var(--pad);border-bottom:1px solid #222a34;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#dde4ec;flex:none;white-space:nowrap;overflow:hidden">─── Inspector ───<span style="flex:1"></span><span style="color:#5b6673;overflow:hidden;text-overflow:ellipsis;min-width:0">{{ insp.hint }}</span>
+      <sc-if value="{{ insp.hasSel }}" hint-placeholder-val="{{ false }}"><button onClick="{{ clearSelect }}" title="back to platform overview" style="border:0;background:none;color:#5b6673;font-size:14px;line-height:1;padding:0 2px" style-hover="color:#fff">×</button></sc-if>
+    </div>
+    <div style="flex:1;min-height:0;overflow:auto">
+      <div style="display:flex;align-items:center;gap:8px;padding:10px var(--pad) 4px;min-width:0"><span style="color:{{ insp.dot }};font-size:11px">●</span><span style="font:600 15px/1 'IBM Plex Sans',sans-serif;color:#fff;white-space:nowrap">{{ insp.title }}</span><span style="font:400 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#5b6673;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ insp.sub }}</span></div>
+      <div style="padding:0 var(--pad) 8px;font:400 var(--fs-s)/1.5 'IBM Plex Mono',monospace;color:#93a0ae">{{ insp.blurb }}</div>
+      <div style="padding:0 var(--pad) 8px;display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 12px;font:400 var(--fs-s)/1.5 'IBM Plex Mono',monospace">
+        <sc-for list="{{ insp.facts }}" as="f" hint-placeholder-count="4"><span style="color:#5b6673;white-space:nowrap">{{ f.k }}</span><span style="color:{{ f.color }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ f.v }}</span></sc-for>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;padding:6px var(--pad) 10px;border-top:1px solid #222a34">
+        <sc-for list="{{ insp.actions }}" as="a" hint-placeholder-count="0">
+          <button onClick="{{ a.run }}" title="{{ a.title }}" style="height:22px;padding:0 8px;border:1px solid #222a34;background:#141920;border-radius:2px;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:{{ a.color }}" style-hover="border-color:#2c3641;background:#1a2028">{{ a.label }}</button>
+        </sc-for>
+        <sc-if value="{{ insp.hasFocus }}" hint-placeholder-val="{{ false }}"><button onClick="{{ insp.toggleFocus }}" title="filter the Monitor panels (SuiteSnapshot + Logs) to this component" style="height:22px;padding:0 8px;border:1px solid {{ insp.focusBorder }};background:{{ insp.focusBg }};border-radius:2px;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:{{ insp.focusColor }}">{{ insp.focusLabel }}</button></sc-if>
+      </div>
+      <sc-if value="{{ insp.hasEvents }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;gap:8px;height:var(--row);padding:0 var(--pad);border-top:1px solid #222a34;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#dde4ec;white-space:nowrap">─── Lifecycle ───<span style="flex:1"></span><span style="color:#5b6673">{{ insp.eventsMeta }}</span></div>
+        <sc-for list="{{ insp.events }}" as="e" hint-placeholder-count="0">
+          <div style="display:grid;grid-template-columns:58px 10px minmax(0,1fr);gap:8px;align-items:baseline;padding:2px var(--pad);font:400 var(--fs-s)/1.4 'IBM Plex Mono',monospace"><span style="color:#5b6673">{{ e.ts }}</span><span style="color:{{ e.color }}">●</span><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#93a0ae"><span style="color:#dde4ec">{{ e.service }}</span> <span style="color:{{ e.color }}">{{ e.type }}</span> {{ e.msg }}</span></div>
+        </sc-for>
+      </sc-if>
+      <sc-if value="{{ insp.hasSessions }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;gap:8px;height:var(--row);padding:0 var(--pad);border-top:1px solid #222a34;margin-top:6px;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#dde4ec;white-space:nowrap">─── Sessions ───<span style="flex:1"></span><span style="color:#5b6673">{{ insp.sessionsMeta }}</span></div>
+        <sc-for list="{{ insp.sessions }}" as="s" hint-placeholder-count="0">
+          <div style="display:grid;grid-template-columns:10px minmax(0,1fr) auto;gap:8px;align-items:center;padding:3px var(--pad);font:400 var(--fs-s)/1.4 'IBM Plex Mono',monospace"><span style="color:{{ s.color }}">●</span><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span style="color:#dde4ec">{{ s.client }}</span> <span style="color:#5b6673">edge {{ s.edge }} · heard {{ s.heard }} · </span><span style="color:{{ s.color }}">{{ s.status }}</span></span>
+            <sc-if value="{{ s.canEject }}" hint-placeholder-val="{{ false }}"><button onClick="{{ s.eject }}" title="Session.EjectSession" style="height:18px;padding:0 6px;border:1px solid rgba(255,107,107,.4);background:transparent;border-radius:2px;font:500 10px/1 'IBM Plex Mono',monospace;color:#ff6b6b" style-hover="background:rgba(255,107,107,.12)">eject</button></sc-if>
+          </div>
+        </sc-for>
+      </sc-if>
+      <sc-if value="{{ insp.hasLogs }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;gap:8px;height:var(--row);padding:0 var(--pad);border-top:1px solid #222a34;margin-top:6px;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#dde4ec;white-space:nowrap">─── Recent logs ───<span style="flex:1"></span><span style="color:#5b6673">{{ insp.logsMeta }}</span></div>
+        <sc-for list="{{ insp.logs }}" as="l" hint-placeholder-count="0">
+          <div style="display:grid;grid-template-columns:58px 40px minmax(0,1fr);gap:6px;padding:1px var(--pad);font:400 10.5px/1.5 'IBM Plex Mono',monospace;white-space:nowrap"><span style="color:#5b6673">{{ l.ts }}</span><span style="color:{{ l.color }}">{{ l.level }}</span><span style="color:#b6c0cb;overflow:hidden;text-overflow:ellipsis">{{ l.msg }}</span></div>
+        </sc-for>
+      </sc-if>
+    </div>
+  </aside>
+</section>
+
+<div onMouseDown="{{ splitDown }}" title="drag to resize Insights / workbench" style="background:#222a34;cursor:row-resize;display:flex;align-items:center;justify-content:center;position:relative;z-index:2" style-hover="background:#2c3641"><div style="width:48px;height:2px;border-radius:1px;background:#3d4652"></div></div>
+
+<section style="display:flex;flex-direction:column;min-height:0;min-width:0;background:#0a0d11">
+  <div style="display:flex;align-items:center;gap:8px;min-height:var(--row);padding:3px var(--pad);border-bottom:1px solid #222a34;background:#0f1318;flex:none;flex-wrap:wrap">
+    <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="3">
+      <button onClick="{{ t.go }}" style="display:flex;align-items:center;gap:7px;height:26px;padding:0 12px;border:1px solid {{ t.border }};background:{{ t.bg }};color:{{ t.color }};border-radius:3px;font:500 var(--fs)/1 'IBM Plex Sans',sans-serif" style-hover="border-color:#2c3641">{{ t.label }}<span style="font:400 var(--fs-s)/1 'IBM Plex Mono',monospace;color:{{ t.badgeColor }}">{{ t.badge }}</span></button>
+    </sc-for>
+    <span style="width:1px;height:18px;background:#222a34;margin:0 4px"></span>
+    <div style="display:flex;gap:3px;flex-wrap:wrap">
+      <sc-for list="{{ chooser }}" as="c" hint-placeholder-count="5">
+        <button onClick="{{ c.toggle }}" title="{{ c.title }}" style="height:20px;padding:0 8px;border:1px solid {{ c.border }};background:{{ c.bg }};border-radius:2px;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:{{ c.color }};text-decoration:{{ c.deco }}" style-hover="border-color:#2c3641">{{ c.label }}</button>
+      </sc-for>
+    </div>
+    <span style="flex:1"></span>
+    <span style="font:400 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#5b6673;white-space:nowrap">drag ⋮⋮ to reorder · chips show/hide · saved locally</span>
+    <button onClick="{{ resetLayout }}" style="height:20px;padding:0 8px;border:1px solid #222a34;background:transparent;border-radius:2px;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#93a0ae" style-hover="border-color:#2c3641;color:#fff">reset layout</button>
+  </div>
+  <div ref="{{ wbRef }}" style="display:flex;flex-wrap:wrap;gap:1px;background:#222a34;flex:1;min-height:0;overflow:auto;align-content:flex-start">
+
+    <section onDragOver="{{ p.registry.over }}" onDrop="{{ p.registry.drop }}" style="order:{{ p.registry.order }};display:{{ p.registry.display }};height:{{ p.registry.height }};flex:1.1 1 300px;min-width:0;min-height:160px;flex-direction:column;background:#0f1318;overflow:hidden;box-shadow:{{ p.registry.ring }}">
+      <div draggable="true" onDragStart="{{ p.registry.start }}" onDragEnd="{{ dragEnd }}" style="display:flex;align-items:center;gap:8px;height:var(--row);padding:0 var(--pad);border-bottom:1px solid #222a34;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#dde4ec;flex:none;white-space:nowrap;overflow:hidden;cursor:grab"><span style="color:#3d4652">⋮⋮</span><span style="flex:none">─── Registry ───</span><span style="flex:1"></span><span style="color:{{ regMetaColor }};overflow:hidden;text-overflow:ellipsis;min-width:0">{{ regMeta }}</span><button onClick="{{ p.registry.hide }}" title="hide panel" style="flex:none;border:0;background:none;color:#5b6673;font-size:13px;line-height:1;padding:0 2px" style-hover="color:#fff">×</button></div>
+      <div style="flex:1;min-height:0;overflow:auto">
+        <sc-for list="{{ registry }}" as="r" hint-placeholder-count="6">
+          <div onClick="{{ r.select }}" style="display:grid;grid-template-columns:14px minmax(0,1fr);gap:8px;align-items:start;min-height:var(--row);padding:5px var(--pad);border-bottom:1px solid #151a21;background:{{ r.bg }};cursor:pointer" style-hover="background:rgba(255,255,255,.035)">
+            <span style="color:{{ r.dotColor }};font:400 12px/1.3 'IBM Plex Mono',monospace">{{ r.spin }}</span>
+            <div style="min-width:0;display:flex;flex-direction:column;gap:2px">
+              <div style="display:flex;gap:8px;align-items:baseline;min-width:0;overflow:hidden"><span style="font:500 var(--fs)/1.2 'IBM Plex Sans',sans-serif;color:{{ r.nameColor }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.name }}</span><span style="font:400 var(--fs-s)/1 'IBM Plex Mono',monospace;color:{{ r.tagColor }};white-space:nowrap;flex:none">[{{ r.tag }}]</span></div>
+              <div style="font:400 var(--fs-s)/1.5 'IBM Plex Mono',monospace;color:#5b6673;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.meta }}</div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+    <section onDragOver="{{ p.tele.over }}" onDrop="{{ p.tele.drop }}" style="order:{{ p.tele.order }};display:{{ p.tele.display }};height:{{ p.tele.height }};flex:2.2 1 560px;min-width:0;min-height:160px;flex-direction:column;background:#0f1318;overflow:hidden;box-shadow:{{ p.tele.ring }}">
+      <div draggable="true" onDragStart="{{ p.tele.start }}" onDragEnd="{{ dragEnd }}" style="display:flex;align-items:center;gap:8px;height:var(--row);padding:0 var(--pad);border-bottom:1px solid #222a34;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#dde4ec;flex:none;white-space:nowrap;overflow:hidden;cursor:grab"><span style="color:#3d4652">⋮⋮</span><span style="flex:none">─── Network · SuiteSnapshot ───</span><span style="flex:1"></span><span style="color:{{ teleMetaColor }};overflow:hidden;text-overflow:ellipsis;min-width:0">{{ teleMeta }}</span>
+        <sc-if value="{{ hasFocus }}" hint-placeholder-val="{{ false }}"><button onClick="{{ clearFocus }}" title="clear Monitor filter" style="flex:none;height:20px;padding:0 7px;border:1px solid #2c3641;background:#1a2028;border-radius:2px;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#dde4ec">{{ focusName }} ×</button></sc-if>
+        <button onClick="{{ resetFocused }}" title="Network.Reset" style="flex:none;height:20px;padding:0 7px;border:1px solid #222a34;background:#141920;border-radius:2px;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#93a0ae" style-hover="border-color:#2c3641;color:#dde4ec">⟲ reset {{ resetLabel }}</button>
+        <button onClick="{{ p.tele.hide }}" title="hide panel" style="flex:none;border:0;background:none;color:#5b6673;font-size:13px;line-height:1;padding:0 2px" style-hover="color:#fff">×</button></div>
+      <div style="flex:1;min-height:0;overflow:auto">
+        <div style="min-width:900px">
+        <div style="display:grid;grid-template-columns:110px minmax(120px,1fr) 30px 26px 76px 78px 78px 66px 66px 66px 96px;gap:8px;padding:0 var(--pad);height:22px;align-items:center;border-bottom:1px solid #222a34;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#5b6673;overflow:hidden;position:sticky;top:0;background:#0f1318;z-index:1">
+          <span>component</span><span>method</span><span>kind</span><span>dir</span><span style="text-align:right">calls</span><span style="text-align:right">in</span><span style="text-align:right">out</span><span style="text-align:right">p50</span><span style="text-align:right">p95</span><span style="text-align:right">p99</span><span>status</span>
+        </div>
+        <sc-for list="{{ teleRows }}" as="t" hint-placeholder-count="8">
+          <div style="display:grid;grid-template-columns:110px minmax(120px,1fr) 30px 26px 76px 78px 78px 66px 66px 66px 96px;gap:8px;padding:0 var(--pad);height:var(--row);align-items:center;border-bottom:1px solid #151a21;font:400 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#93a0ae;opacity:{{ t.opacity }}" style-hover="background:rgba(255,255,255,.03)">
+            <span style="color:#dde4ec;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ t.c }}</span>
+            <span style="color:#dde4ec;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ t.m }}</span>
+            <span style="color:#5b6673">{{ t.k }}</span><span style="color:#5b6673">{{ t.d }}</span>
+            <span style="text-align:right;color:#dde4ec">{{ t.calls }}</span>
+            <span style="text-align:right">{{ t.bi }}</span><span style="text-align:right">{{ t.bo }}</span>
+            <span style="text-align:right">{{ t.p50 }}</span><span style="text-align:right">{{ t.p95 }}</span><span style="text-align:right;color:{{ t.p99Color }}">{{ t.p99 }}</span>
+            <div style="display:flex;align-items:center;gap:6px;min-width:0"><div style="flex:1;height:4px;background:#1a2028;border-radius:2px;overflow:hidden;display:flex"><div style="width:{{ t.okPct }};background:#3aa860"></div><div style="flex:1;background:{{ t.errColor }}"></div></div><span style="color:{{ t.errTextColor }};min-width:44px;text-align:right;white-space:nowrap">{{ t.errText }}</span></div>
+          </div>
+        </sc-for>
+        </div>
+      </div>
+    </section>
+
+    <section onDragOver="{{ p.logs.over }}" onDrop="{{ p.logs.drop }}" style="order:{{ p.logs.order }};display:{{ p.logs.display }};height:{{ p.logs.height }};flex:1.8 1 400px;min-width:0;min-height:160px;flex-direction:column;background:#0f1318;overflow:hidden;box-shadow:{{ p.logs.ring }}">
+      <div draggable="true" onDragStart="{{ p.logs.start }}" onDragEnd="{{ dragEnd }}" style="display:flex;align-items:center;gap:8px;height:var(--row);padding:0 var(--pad);border-bottom:1px solid #222a34;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#dde4ec;flex:none;white-space:nowrap;overflow:hidden;cursor:grab"><span style="color:#3d4652;flex:none">⋮⋮</span><span style="flex:none">─── Logs · StreamLogs ───</span><span style="flex:1;min-width:0"></span><span style="color:{{ logMetaColor }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:0 1 auto">{{ logMeta }}</span>
+        <button onClick="{{ togglePause }}" style="flex:none;height:20px;padding:0 7px;border:1px solid #222a34;background:#141920;border-radius:2px;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#93a0ae" style-hover="border-color:#2c3641;color:#dde4ec">{{ pauseLabel }}</button>
+        <button onClick="{{ p.logs.hide }}" title="hide panel" style="flex:none;border:0;background:none;color:#5b6673;font-size:13px;line-height:1;padding:0 2px" style-hover="color:#fff">×</button></div>
+      <div style="display:flex;align-items:center;gap:6px;height:24px;padding:0 var(--pad);border-bottom:1px solid #222a34;flex:none;overflow:hidden">
+        <div style="display:flex;gap:3px;min-width:0;overflow:hidden">
+          <sc-for list="{{ levelChips }}" as="lv" hint-placeholder-count="8">
+            <button onClick="{{ lv.toggle }}" title="{{ lv.name }}" style="flex:none;height:18px;padding:0 5px;border:1px solid {{ lv.border }};background:{{ lv.bg }};border-radius:2px;font:500 10px/1 'IBM Plex Mono',monospace;color:{{ lv.color }}" style-hover="border-color:#2c3641">{{ lv.short }}</button>
+          </sc-for>
+        </div>
+        <span style="flex:1"></span>
+        <sc-if value="{{ hasFocus }}" hint-placeholder-val="{{ false }}"><button onClick="{{ clearFocus }}" title="clear Monitor filter" style="flex:none;height:18px;padding:0 7px;border:1px solid #2c3641;background:#1a2028;border-radius:2px;font:500 10px/1 'IBM Plex Mono',monospace;color:#dde4ec">{{ focusName }} ×</button></sc-if>
+      </div>
+      <div ref="{{ logRef }}" style="flex:1;min-height:0;overflow:auto;padding:4px 0;background:#0a0d11">
+        <sc-for list="{{ logLines }}" as="l" hint-placeholder-count="10">
+          <div style="display:grid;grid-template-columns:92px 54px 170px minmax(0,1fr);gap:8px;padding:1px var(--pad);font:400 var(--fs-s)/1.5 'IBM Plex Mono',monospace;white-space:nowrap">
+            <span style="color:#5b6673">{{ l.ts }}</span><span style="color:{{ l.color }}">[{{ l.level }}]</span><span style="color:#93a0ae;overflow:hidden;text-overflow:ellipsis">{{ l.label }}</span><span style="color:{{ l.msgColor }};overflow:hidden;text-overflow:ellipsis">{{ l.msg }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+    <section onDragOver="{{ p.lifecycle.over }}" onDrop="{{ p.lifecycle.drop }}" style="order:{{ p.lifecycle.order }};display:{{ p.lifecycle.display }};height:{{ p.lifecycle.height }};flex:1 1 280px;min-width:0;min-height:160px;flex-direction:column;background:#0f1318;overflow:hidden;box-shadow:{{ p.lifecycle.ring }}">
+      <div draggable="true" onDragStart="{{ p.lifecycle.start }}" onDragEnd="{{ dragEnd }}" style="display:flex;align-items:center;gap:8px;height:var(--row);padding:0 var(--pad);border-bottom:1px solid #222a34;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#dde4ec;flex:none;white-space:nowrap;overflow:hidden;cursor:grab"><span style="color:#3d4652">⋮⋮</span><span style="flex:none">─── Lifecycle ───</span><span style="flex:1"></span><span style="color:#5b6673;white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis">seq {{ lcSeq }} · replay ring 256</span><button onClick="{{ p.lifecycle.hide }}" title="hide panel" style="flex:none;border:0;background:none;color:#5b6673;font-size:13px;line-height:1;padding:0 2px" style-hover="color:#fff">×</button></div>
+      <div style="flex:1;min-height:0;overflow:auto;padding:4px 0">
+        <sc-for list="{{ lifecycle }}" as="e" hint-placeholder-count="5">
+          <div style="display:grid;grid-template-columns:58px 10px minmax(0,1fr);gap:8px;align-items:baseline;padding:3px var(--pad);font:400 var(--fs-s)/1.4 'IBM Plex Mono',monospace">
+            <span style="color:#5b6673">{{ e.ts }}</span><span style="color:{{ e.color }}">●</span>
+            <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#93a0ae"><span style="color:#dde4ec">{{ e.service }}</span> <span style="color:{{ e.color }}">{{ e.type }}</span> {{ e.msg }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+    <section onDragOver="{{ p.sessions.over }}" onDrop="{{ p.sessions.drop }}" style="order:{{ p.sessions.order }};display:{{ p.sessions.display }};height:{{ p.sessions.height }};flex:1 1 280px;min-width:0;min-height:160px;flex-direction:column;background:#0f1318;overflow:hidden;box-shadow:{{ p.sessions.ring }}">
+      <div draggable="true" onDragStart="{{ p.sessions.start }}" onDragEnd="{{ dragEnd }}" style="display:flex;align-items:center;gap:8px;height:var(--row);padding:0 var(--pad);border-bottom:1px solid #222a34;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#dde4ec;flex:none;white-space:nowrap;overflow:hidden;cursor:grab"><span style="color:#3d4652">⋮⋮</span><span style="flex:none">─── Sessions ───</span><span style="flex:1"></span><span style="color:#5b6673;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">{{ sessMeta }}</span><button onClick="{{ p.sessions.hide }}" title="hide panel" style="flex:none;border:0;background:none;color:#5b6673;font-size:13px;line-height:1;padding:0 2px" style-hover="color:#fff">×</button></div>
+      <div style="flex:1;min-height:0;overflow:auto">
+        <sc-for list="{{ sessions }}" as="s" hint-placeholder-count="4">
+          <div style="display:grid;grid-template-columns:10px minmax(0,1fr) auto;gap:8px;align-items:center;min-height:var(--row);padding:4px var(--pad);border-bottom:1px solid #151a21">
+            <span style="color:{{ s.color }}">●</span>
+            <div style="min-width:0;font:400 var(--fs-s)/1.5 'IBM Plex Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><span style="color:#dde4ec">{{ s.client }}</span> <span style="color:#5b6673">edge {{ s.edge }}</span><br><span style="color:#5b6673">since {{ s.since }} · key-timeout {{ s.keyTimeout }} · heard {{ s.heard }} · </span><span style="color:{{ s.color }}">{{ s.status }}</span></div>
+            <sc-if value="{{ s.canEject }}" hint-placeholder-val="{{ false }}"><button onClick="{{ s.eject }}" title="Session.EjectSession" style="height:20px;padding:0 7px;border:1px solid rgba(255,107,107,.4);background:transparent;border-radius:2px;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#ff6b6b" style-hover="background:rgba(255,107,107,.12)">eject</button></sc-if>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+    <section onDragOver="{{ p.suites.over }}" onDrop="{{ p.suites.drop }}" style="order:{{ p.suites.order }};display:{{ p.suites.display }};height:{{ p.suites.height }};flex:1.5 1 520px;min-width:0;min-height:160px;flex-direction:column;background:#0f1318;overflow:hidden;box-shadow:{{ p.suites.ring }}">
+      <div draggable="true" onDragStart="{{ p.suites.start }}" onDragEnd="{{ dragEnd }}" style="display:flex;align-items:center;gap:8px;min-height:var(--row);padding:3px var(--pad);border-bottom:1px solid #222a34;flex-wrap:wrap;flex:none;cursor:grab">
+        <span style="color:#3d4652;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace">⋮⋮</span><span style="font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#dde4ec;white-space:nowrap">─── Suites ───</span>
+        <div style="display:flex;gap:3px">
+          <sc-for list="{{ profileChips }}" as="pc" hint-placeholder-count="4">
+            <button onClick="{{ pc.pick }}" style="height:20px;padding:0 8px;border:1px solid {{ pc.border }};background:{{ pc.bg }};border-radius:2px;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:{{ pc.color }}" style-hover="border-color:#2c3641">{{ pc.label }}</button>
+          </sc-for>
+        </div>
+        <span style="flex:1"></span>
+        <div style="display:flex;border:1px solid #222a34;border-radius:2px;overflow:hidden">
+          <sc-for list="{{ sanitizeOpts }}" as="so" hint-placeholder-count="4">
+            <button onClick="{{ so.pick }}" title="--sanitize · binaries from bin&lt;suffix&gt;/" style="height:20px;padding:0 8px;border:0;border-right:1px solid #222a34;background:{{ so.bg }};font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:{{ so.color }}">{{ so.label }}</button>
+          </sc-for>
+        </div>
+        <div style="display:flex;gap:3px">
+          <sc-for list="{{ flagChips }}" as="fc" hint-placeholder-count="3">
+            <button onClick="{{ fc.toggle }}" style="height:20px;padding:0 7px;border:1px solid {{ fc.border }};background:{{ fc.bg }};border-radius:2px;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:{{ fc.color }}" style-hover="border-color:#2c3641">{{ fc.label }}</button>
+          </sc-for>
+        </div>
+        <button onClick="{{ runSelected }}" style="height:22px;padding:0 10px;border:1px solid #dde4ec;background:#dde4ec;border-radius:2px;font:600 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#0a0d11" style-hover="background:#fff">▶ run selected {{ selCountLabel }}</button>
+        <button onClick="{{ runAll }}" style="height:22px;padding:0 10px;border:1px solid #2c3641;background:#141920;border-radius:2px;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#dde4ec" style-hover="background:#1a2028">▶ run all {{ visCountLabel }}</button>
+        <sc-if value="{{ isRunning }}" hint-placeholder-val="{{ false }}"><button onClick="{{ stopRun }}" style="height:22px;padding:0 10px;border:1px solid rgba(255,107,107,.45);background:rgba(255,107,107,.08);border-radius:2px;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#ff6b6b" style-hover="background:rgba(255,107,107,.18)">■ stop</button></sc-if>
+        <button onClick="{{ p.suites.hide }}" title="hide panel" style="flex:none;border:0;background:none;color:#5b6673;font-size:13px;line-height:1;padding:0 2px" style-hover="color:#fff">×</button>
+      </div>
+      <div style="display:grid;grid-template-columns:20px minmax(0,1fr) minmax(0,1.4fr) 76px 40px minmax(60px,.8fr) 40px;gap:8px;padding:0 var(--pad);height:22px;align-items:center;border-bottom:1px solid #222a34;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#5b6673;flex:none">
+        <span></span><span>suite</span><span>description</span><span>profile</span><span>needs</span><span>last</span><span style="text-align:right">▶</span>
+      </div>
+      <div style="flex:1;min-height:0;overflow:auto">
+        <sc-for list="{{ suites }}" as="t" hint-placeholder-count="12">
+          <div onClick="{{ t.toggle }}" style="display:grid;grid-template-columns:20px minmax(0,1fr) minmax(0,1.4fr) 76px 40px minmax(60px,.8fr) 40px;gap:8px;padding:0 var(--pad);height:var(--row);align-items:center;border-bottom:1px solid #151a21;background:{{ t.bg }};cursor:pointer;font:400 var(--fs-s)/1 'IBM Plex Mono',monospace" style-hover="background:rgba(255,255,255,.035)">
+            <span style="color:{{ t.glyphColor }};text-align:center">{{ t.glyph }}</span>
+            <span style="display:flex;gap:6px;align-items:center;min-width:0"><span style="color:#5b6673">{{ t.check }}</span><span style="font:500 var(--fs)/1 'IBM Plex Sans',sans-serif;color:#dde4ec;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ t.name }}</span></span>
+            <span style="color:#93a0ae;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ t.desc }}</span>
+            <span style="color:{{ t.profileColor }}">{{ t.profile }}</span>
+            <span style="display:flex;gap:3px"><sc-for list="{{ t.needs }}" as="nd" hint-placeholder-count="0"><span title="{{ nd.title }}" style="color:{{ nd.color }};border:1px solid #222a34;border-radius:2px;padding:1px 3px;font-size:9.5px">{{ nd.t }}</span></sc-for></span>
+            <span style="color:{{ t.lastColor }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ t.last }}</span>
+            <button onClick="{{ t.run }}" title="./test/run_all.py --only {{ t.key }}" style="height:18px;width:26px;justify-self:end;border:1px solid #222a34;background:#141920;border-radius:2px;font:500 10px/1 'IBM Plex Mono',monospace;color:#93a0ae" style-hover="border-color:#2c3641;color:#fff">▶</button>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+    <section onDragOver="{{ p.live.over }}" onDrop="{{ p.live.drop }}" style="order:{{ p.live.order }};display:{{ p.live.display }};height:{{ p.live.height }};flex:1.3 1 400px;min-width:0;min-height:160px;flex-direction:column;background:#0a0d11;overflow:hidden;box-shadow:{{ p.live.ring }}">
+      <div draggable="true" onDragStart="{{ p.live.start }}" onDragEnd="{{ dragEnd }}" style="display:flex;align-items:center;gap:8px;height:var(--row);padding:0 var(--pad);border-bottom:1px solid #222a34;background:#0f1318;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#dde4ec;flex:none;white-space:nowrap;overflow:hidden;cursor:grab"><span style="color:#3d4652">⋮⋮</span><span style="flex:none">─── Live ───</span><span style="flex:1"></span><span style="color:#5b6673;overflow:hidden;text-overflow:ellipsis;min-width:0">{{ sweepMeta }}</span><button onClick="{{ p.live.hide }}" title="hide panel" style="flex:none;border:0;background:none;color:#5b6673;font-size:13px;line-height:1;padding:0 2px" style-hover="color:#fff">×</button></div>
+      <div ref="{{ liveRef }}" style="flex:1;min-height:0;overflow:auto;padding:8px var(--pad);font:400 var(--fs-s)/1.6 'IBM Plex Mono',monospace;color:#93a0ae">
+        <sc-if value="{{ liveIdle }}" hint-placeholder-val="{{ true }}">
+          <div style="color:#5b6673">$ <span style="color:#dde4ec">{{ cmdPreview }}</span></div>
+          <div style="color:#5b6673;margin-top:8px">idle — select suites in the matrix, or ▶ a row. Suites whose infra is down auto-skip (⊘), never fail the master.</div>
+          <div style="color:#5b6673">Watch the Insights topology while a suite runs: launched components, edge traffic and store commits show up there live.</div>
+        </sc-if>
+        <sc-if value="{{ liveActive }}" hint-placeholder-val="{{ false }}">
+          <div style="color:#5b6673">$ <span style="color:#dde4ec">{{ liveCmd }}</span></div>
+          <div style="color:#dde4ec;margin-top:6px">{{ liveBanner }}</div>
+          <div><span style="color:#dde4ec">{{ liveSpin }}</span> State [{{ liveProgress }}%] <span style="color:#5be37a">{{ liveBarOn }}</span><span style="color:#2c3641">{{ liveBarOff }}</span>: <span style="color:#5b6673">{{ livePhase }}</span></div>
+          <div style="color:#dde4ec;margin-top:6px">─── Components ───</div>
+          <sc-for list="{{ liveComps }}" as="c" hint-placeholder-count="0"><div style="white-space:pre">  <span style="color:#dde4ec">{{ c.spin }}</span> <span style="color:#dde4ec">{{ c.name }}</span> [<span style="color:{{ c.tagColor }}">{{ c.tag }}</span>] <span style="color:#5b6673">pid={{ c.pid }} :{{ c.port }} {{ c.elapsed }}</span></div></sc-for>
+          <div style="color:#dde4ec;margin-top:6px">─── Diagnostics ───</div>
+          <sc-for list="{{ liveDiag }}" as="d" hint-placeholder-count="0"><div style="color:{{ d.color }};white-space:pre">    {{ d.text }}</div></sc-for>
+          <div style="color:#dde4ec;margin-top:6px">─── Results ───</div>
+          <sc-for list="{{ liveResults }}" as="r" hint-placeholder-count="0"><div style="white-space:pre">  <span style="color:{{ r.color }}">{{ r.glyph }}</span> <span style="color:#dde4ec">{{ r.name }}</span> <span style="color:#5b6673">{{ r.detail }}</span></div></sc-for>
+          <div style="color:#5b6673">{{ liveFooter }}</div>
+          <div style="color:{{ liveCloseColor }};margin-top:4px">{{ liveClose }}</div>
+          <div style="color:{{ masterColor }};margin-top:8px">{{ masterBanner }}</div>
+        </sc-if>
+      </div>
+    </section>
+
+    <section onDragOver="{{ p.artifacts.over }}" onDrop="{{ p.artifacts.drop }}" style="order:{{ p.artifacts.order }};display:{{ p.artifacts.display }};height:{{ p.artifacts.height }};flex:1 1 320px;min-width:0;min-height:160px;flex-direction:column;background:#0f1318;overflow:hidden;box-shadow:{{ p.artifacts.ring }}">
+      <div draggable="true" onDragStart="{{ p.artifacts.start }}" onDragEnd="{{ dragEnd }}" style="display:flex;align-items:center;gap:8px;height:var(--row);padding:0 var(--pad);border-bottom:1px solid #222a34;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#dde4ec;flex:none;white-space:nowrap;overflow:hidden;cursor:grab"><span style="color:#3d4652">⋮⋮</span><span style="flex:none">─── Artifacts ───</span><span style="flex:1"></span><span style="color:#5b6673;overflow:hidden;text-overflow:ellipsis;min-width:0">{{ artMeta }}</span><button onClick="{{ p.artifacts.hide }}" title="hide panel" style="flex:none;border:0;background:none;color:#5b6673;font-size:13px;line-height:1;padding:0 2px" style-hover="color:#fff">×</button></div>
+      <div style="flex:1;min-height:0;overflow:auto">
+        <sc-for list="{{ artifacts }}" as="a" hint-placeholder-count="0">
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) 84px 48px auto;gap:8px;align-items:center;padding:2px var(--pad);font:400 var(--fs-s)/1.5 'IBM Plex Mono',monospace;border-bottom:1px solid #151a21">
+            <span style="color:#93a0ae;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ a.path }}</span><span style="color:#5b6673">{{ a.kind }}</span><span style="color:#5b6673">{{ a.at }}</span>
+            <button onClick="{{ a.copy }}" style="height:18px;padding:0 6px;border:1px solid #222a34;background:#141920;border-radius:2px;font:500 10px/1 'IBM Plex Mono',monospace;color:#93a0ae" style-hover="color:#fff;border-color:#2c3641">copy</button>
+          </div>
+        </sc-for>
+        <sc-if value="{{ noArtifacts }}" hint-placeholder-val="{{ true }}"><div style="padding:8px var(--pad);font:400 var(--fs-s)/1.5 'IBM Plex Mono',monospace;color:#5b6673">no run yet — every run writes junit.xml + summary.json to bin/log/&lt;Suite&gt;/log/artifacts/, pass or fail</div></sc-if>
+        <div style="display:flex;align-items:center;gap:8px;height:var(--row);padding:0 var(--pad);font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#dde4ec;border-bottom:1px solid #222a34;border-top:1px solid #222a34;margin-top:6px">─── History ───<span style="flex:1"></span><span style="color:#5b6673">{{ histMeta }}</span></div>
+        <sc-for list="{{ history }}" as="h" hint-placeholder-count="0">
+          <div style="display:grid;grid-template-columns:14px minmax(0,1fr) 56px 64px 60px;gap:8px;align-items:center;padding:2px var(--pad);font:400 var(--fs-s)/1.5 'IBM Plex Mono',monospace;border-bottom:1px solid #151a21">
+            <span style="color:{{ h.color }}">{{ h.glyph }}</span><span style="color:#dde4ec;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ h.name }} <span style="color:#5b6673">{{ h.note }}</span></span><span style="color:#5b6673;text-align:right">{{ h.elapsed }}</span><span style="color:#5b6673">{{ h.at }}</span><span style="color:#5b6673">{{ h.sanitize }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+    <section onDragOver="{{ p.fleet.over }}" onDrop="{{ p.fleet.drop }}" style="order:{{ p.fleet.order }};display:{{ p.fleet.display }};height:{{ p.fleet.height }};flex:1.2 1 420px;min-width:0;min-height:160px;flex-direction:column;background:#0f1318;overflow:hidden;box-shadow:{{ p.fleet.ring }}">
+      <div draggable="true" onDragStart="{{ p.fleet.start }}" onDragEnd="{{ dragEnd }}" style="display:flex;align-items:center;gap:8px;height:var(--row);padding:0 var(--pad);border-bottom:1px solid #222a34;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#dde4ec;flex:none;white-space:nowrap;overflow:hidden;cursor:grab"><span style="color:#3d4652">⋮⋮</span><span style="flex:none">─── Edge fleet ───</span><span style="color:#5b6673;min-width:0;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis">bin/edge × N → StreamHealth / StreamTherapy</span><span style="flex:1"></span><span style="color:{{ fleetStateColor }};flex:none">{{ fleetState }}</span><button onClick="{{ p.fleet.hide }}" title="hide panel" style="flex:none;border:0;background:none;color:#5b6673;font-size:13px;line-height:1;padding:0 2px" style-hover="color:#fff">×</button></div>
+      <div style="flex:1;min-height:0;overflow:auto;padding:var(--pad);display:flex;flex-direction:column;gap:10px">
+        <div style="display:grid;grid-template-columns:auto minmax(0,1fr) 48px;gap:6px 10px;align-items:center;font:400 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#93a0ae">
+          <span>edges</span><input type="range" min="1" max="64" value="{{ fleetEdges }}" onChange="{{ onEdges }}" style="width:100%"><span style="text-align:right;color:#dde4ec">{{ fleetEdges }}</span>
+          <span>events/s · edge</span><input type="range" min="1" max="60" value="{{ fleetRate }}" onChange="{{ onRate }}" style="width:100%"><span style="text-align:right;color:#dde4ec">{{ fleetRate }}</span>
+          <span>jitter</span><input type="range" min="0" max="50" value="{{ fleetJitter }}" onChange="{{ onJitter }}" style="width:100%"><span style="text-align:right;color:#dde4ec">{{ fleetJitter }}%</span>
+          <span>--max-streams</span><input type="range" min="1" max="128" value="{{ fleetCeiling }}" onChange="{{ onCeiling }}" style="width:100%"><span style="text-align:right;color:#dde4ec">{{ fleetCeiling }}</span>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+          <button onClick="{{ fleetToggle }}" style="height:22px;padding:0 10px;border:1px solid {{ fleetBtnBorder }};background:{{ fleetBtnBg }};border-radius:2px;font:600 var(--fs-s)/1 'IBM Plex Mono',monospace;color:{{ fleetBtnColor }}">{{ fleetBtnLabel }}</button>
+          <button onClick="{{ storm }}" title="restart Health + Therapy mid-flight; edges reconnect with jitter and resume at their committed watermark" style="height:22px;padding:0 10px;border:1px solid #2c3641;background:#141920;border-radius:2px;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#dde4ec" style-hover="background:#1a2028">⟳ reconnect storm</button>
+          <button onClick="{{ toggleHealthPlane }}" style="height:22px;padding:0 8px;border:1px solid {{ planeHBorder }};background:{{ planeHBg }};border-radius:2px;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:{{ planeHColor }}">Health :57030</button>
+          <button onClick="{{ toggleTherapyPlane }}" style="height:22px;padding:0 8px;border:1px solid {{ planeTBorder }};background:{{ planeTBg }};border-radius:2px;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:{{ planeTColor }}">Therapy :57040</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;font:400 var(--fs-s)/1.3 'IBM Plex Mono',monospace">
+          <div><div style="color:#5b6673">active / ceiling</div><div style="color:#dde4ec;font-size:var(--fs)">{{ fleetActive }}</div></div>
+          <div><div style="color:#5b6673">received</div><div style="color:#dde4ec;font-size:var(--fs)">{{ fleetRx }}</div></div>
+          <div><div style="color:#5b6673">committed</div><div style="color:#dde4ec;font-size:var(--fs)">{{ fleetCm }}</div></div>
+          <div><div style="color:#5b6673">Δ held</div><div style="color:{{ fleetDeltaColor }};font-size:var(--fs)">{{ fleetDelta }}</div></div>
+          <div><div style="color:#5b6673">RESOURCE_EXHAUSTED</div><div style="color:{{ fleetShedColor }};font-size:var(--fs)">{{ fleetShed }}</div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(32,minmax(0,1fr));gap:2px">
+          <sc-for list="{{ fleetEdgesView }}" as="e" hint-placeholder-count="0">
+            <div title="{{ e.title }}" style="height:28px;background:#141920;position:relative;border-radius:1px;overflow:hidden"><div style="position:absolute;left:0;right:0;bottom:0;height:{{ e.pct }};background:{{ e.color }}"></div></div>
+          </sc-for>
+        </div>
+        <div style="font:400 var(--fs-s)/1.4 'IBM Plex Mono',monospace;color:#5b6673">{{ fleetNote }}</div>
+      </div>
+    </section>
+
+    <section onDragOver="{{ p.faults.over }}" onDrop="{{ p.faults.drop }}" style="order:{{ p.faults.order }};display:{{ p.faults.display }};height:{{ p.faults.height }};flex:1.1 1 400px;min-width:0;min-height:160px;flex-direction:column;background:#0f1318;overflow:hidden;box-shadow:{{ p.faults.ring }}">
+      <div draggable="true" onDragStart="{{ p.faults.start }}" onDragEnd="{{ dragEnd }}" style="display:flex;align-items:center;gap:8px;height:var(--row);padding:0 var(--pad);border-bottom:1px solid #222a34;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#dde4ec;flex:none;white-space:nowrap;overflow:hidden;cursor:grab"><span style="color:#3d4652">⋮⋮</span><span style="flex:none">─── FaultWalker ───</span><span style="color:#5b6673;min-width:0;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis">(kind × boundary) · clean Edge DB + empty sink per case</span><span style="flex:1"></span><span style="color:#93a0ae;flex:none">{{ faultProgress }}</span><button onClick="{{ p.faults.hide }}" title="hide panel" style="flex:none;border:0;background:none;color:#5b6673;font-size:13px;line-height:1;padding:0 2px" style-hover="color:#fff">×</button></div>
+      <div style="flex:1;min-height:0;overflow:auto;padding:var(--pad);display:flex;flex-direction:column;gap:10px">
+        <div style="display:grid;grid-template-columns:64px repeat(5,minmax(0,1fr));gap:3px;font:400 10px/1.2 'IBM Plex Mono',monospace">
+          <span></span>
+          <sc-for list="{{ faultBounds }}" as="b" hint-placeholder-count="5"><span style="color:#5b6673;text-align:center;white-space:pre-line;align-self:end">{{ b }}</span></sc-for>
+          <sc-for list="{{ faultRows }}" as="fr" hint-placeholder-count="3">
+            <span style="color:#93a0ae;align-self:center">{{ fr.kind }}</span>
+            <sc-for list="{{ fr.cells }}" as="c" hint-placeholder-count="5">
+              <button onClick="{{ c.fire }}" title="{{ c.title }}" style="height:30px;border:1px solid #222a34;background:{{ c.bg }};border-radius:2px;font:500 13px/1 'IBM Plex Mono',monospace;color:{{ c.color }};display:flex;align-items:center;justify-content:center;gap:4px" style-hover="border-color:#2c3641">{{ c.glyph }}<span style="font-size:9px;color:#ff6b6b">{{ c.seed }}</span></button>
+            </sc-for>
+          </sc-for>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;font:400 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#93a0ae">
+          <button onClick="{{ walk }}" style="height:22px;padding:0 10px;border:1px solid #dde4ec;background:#dde4ec;border-radius:2px;font:600 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#0a0d11" style-hover="background:#fff">▶ walk matrix</button>
+          <span>--seed</span><input value="{{ faultSeed }}" onChange="{{ onFaultSeed }}" style="width:70px;height:20px;padding:0 6px;border:1px solid #222a34;background:#0a0d11;border-radius:2px;font:400 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#dde4ec;outline:0">
+          <span>--depth</span>
+          <div style="display:flex;border:1px solid #222a34;border-radius:2px;overflow:hidden">
+            <sc-for list="{{ depthOpts }}" as="d" hint-placeholder-count="2"><button onClick="{{ d.pick }}" style="height:20px;padding:0 8px;border:0;border-right:1px solid #222a34;background:{{ d.bg }};font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:{{ d.color }}">{{ d.label }}</button></sc-for>
+          </div>
+          <span style="color:#5b6673">KILL = _exit(137) · PAUSE = stall · RESET = cancel + new epoch</span>
+        </div>
+        <div style="font:400 var(--fs-s)/1.5 'IBM Plex Mono',monospace;color:{{ oracleColor }}">{{ oracleText }}</div>
+      </div>
+    </section>
+
+    <section onDragOver="{{ p.breakers.over }}" onDrop="{{ p.breakers.drop }}" style="order:{{ p.breakers.order }};display:{{ p.breakers.display }};height:{{ p.breakers.height }};flex:1 1 380px;min-width:0;min-height:160px;flex-direction:column;background:#0f1318;overflow:hidden;box-shadow:{{ p.breakers.ring }}">
+      <div draggable="true" onDragStart="{{ p.breakers.start }}" onDragEnd="{{ dragEnd }}" style="display:flex;align-items:center;gap:8px;height:var(--row);padding:0 var(--pad);border-bottom:1px solid #222a34;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#dde4ec;flex:none;white-space:nowrap;overflow:hidden;cursor:grab"><span style="color:#3d4652">⋮⋮</span><span style="flex:none">─── Infra breakers ───</span><span style="color:#5b6673;min-width:0;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis">docs/service-risk.md — the rows nothing proves yet</span><span style="flex:1"></span><button onClick="{{ p.breakers.hide }}" title="hide panel" style="flex:none;border:0;background:none;color:#5b6673;font-size:13px;line-height:1;padding:0 2px" style-hover="color:#fff">×</button></div>
+      <div style="flex:1;min-height:0;overflow:auto;padding:var(--pad);display:flex;flex-direction:column;gap:8px">
+        <sc-for list="{{ breakers }}" as="b" hint-placeholder-count="3">
+          <div style="display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;padding:8px;border:1px solid {{ b.border }};border-radius:3px;background:{{ b.bg }}">
+            <button onClick="{{ b.toggle }}" title="{{ b.sub }}" style="width:64px;height:54px;border:1px solid {{ b.btnBorder }};background:{{ b.btnBg }};border-radius:3px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font:600 10px/1 'IBM Plex Mono',monospace;color:{{ b.btnColor }}"><span style="font-size:16px">{{ b.glyph }}</span>{{ b.btnLabel }}</button>
+            <div style="min-width:0;font:400 var(--fs-s)/1.45 'IBM Plex Mono',monospace">
+              <div style="display:flex;gap:8px;align-items:baseline"><span style="font:600 var(--fs)/1 'IBM Plex Sans',sans-serif;color:#dde4ec">{{ b.name }}</span><span style="color:#5b6673">{{ b.sub }}</span><span style="flex:1"></span><span style="color:#f5c542;border:1px solid rgba(245,197,66,.4);border-radius:2px;padding:1px 5px;font-size:9.5px">{{ b.gated }}</span></div>
+              <div style="color:#93a0ae;margin-top:3px;white-space:normal">{{ b.effect }}</div>
+              <div style="color:{{ b.obsColor }};margin-top:3px">{{ b.observed }}</div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+    <section onDragOver="{{ p.sims.over }}" onDrop="{{ p.sims.drop }}" style="order:{{ p.sims.order }};display:{{ p.sims.display }};height:{{ p.sims.height }};flex:1.1 1 400px;min-width:0;min-height:160px;flex-direction:column;background:#0f1318;overflow:hidden;box-shadow:{{ p.sims.ring }}">
+      <div draggable="true" onDragStart="{{ p.sims.start }}" onDragEnd="{{ dragEnd }}" style="display:flex;align-items:center;gap:8px;height:var(--row);padding:0 var(--pad);border-bottom:1px solid #222a34;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#dde4ec;flex:none;white-space:nowrap;overflow:hidden;cursor:grab"><span style="color:#3d4652">⋮⋮</span><span style="flex:none">─── Deterministic simulators ───</span><span style="color:#5b6673;min-width:0;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis">same seed → byte-identical stream</span><span style="flex:1"></span><button onClick="{{ p.sims.hide }}" title="hide panel" style="flex:none;border:0;background:none;color:#5b6673;font-size:13px;line-height:1;padding:0 2px" style-hover="color:#fff">×</button></div>
+      <div style="flex:1;min-height:0;overflow:auto;padding:var(--pad);display:flex;flex-direction:column;gap:10px">
+        <div style="border:1px solid #222a34;border-radius:3px;padding:8px;display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;gap:8px;align-items:baseline;font:400 var(--fs-s)/1 'IBM Plex Mono',monospace"><span style="font:600 var(--fs)/1 'IBM Plex Sans',sans-serif;color:#dde4ec">HealthKit-equivalent simulator</span><span style="color:#5b6673">SalusHealth · catalog-validated</span></div>
+          <div style="display:grid;grid-template-columns:auto minmax(0,1fr) 56px;gap:6px 10px;align-items:center;font:400 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#93a0ae">
+            <span>seed</span><input value="{{ hsSeed }}" onChange="{{ onHsSeed }}" style="width:90px;height:20px;padding:0 6px;border:1px solid #222a34;background:#0a0d11;border-radius:2px;font:400 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#dde4ec;outline:0"><span></span>
+            <span>virtual time</span><input type="range" min="1" max="1000" value="{{ hsScale }}" onChange="{{ onHsScale }}" style="width:100%"><span style="text-align:right;color:#dde4ec">×{{ hsScale }}</span>
+          </div>
+          <div style="display:flex;gap:4px;flex-wrap:wrap">
+            <sc-for list="{{ metricChips }}" as="m" hint-placeholder-count="5"><button onClick="{{ m.pick }}" style="height:20px;padding:0 8px;border:1px solid {{ m.border }};background:{{ m.bg }};border-radius:2px;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:{{ m.color }}" style-hover="border-color:#2c3641">{{ m.label }}</button></sc-for>
+            <span style="flex:1"></span>
+            <button onClick="{{ hsGen }}" style="height:22px;padding:0 10px;border:1px solid #dde4ec;background:#dde4ec;border-radius:2px;font:600 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#0a0d11" style-hover="background:#fff">▶ generate</button>
+          </div>
+          <div style="font:400 var(--fs-s)/1.5 'IBM Plex Mono',monospace;color:#93a0ae;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><span style="color:#5b6673">sha</span> <span style="color:#dde4ec">{{ hsDigest }}</span> <span style="color:#5b6673">·</span> {{ hsEvents }} <span style="color:#5b6673">·</span> <span style="color:{{ hsIdenticalColor }}">{{ hsIdentical }}</span></div>
+        </div>
+        <div style="border:1px solid #222a34;border-radius:3px;padding:8px;display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;gap:8px;align-items:baseline;font:400 var(--fs-s)/1 'IBM Plex Mono',monospace"><span style="font:600 var(--fs)/1 'IBM Plex Sans',sans-serif;color:#dde4ec">Emulated BlueBase device</span><span style="color:#5b6673">SalusTherapy · adapter → coordinator</span><span style="flex:1"></span><span style="color:{{ devBleColor }}">{{ devBleState }}</span></div>
+          <div style="display:flex;gap:3px;flex-wrap:wrap">
+            <sc-for list="{{ devSteps }}" as="d" hint-placeholder-count="7"><span style="height:20px;display:inline-flex;align-items:center;padding:0 8px;border:1px solid {{ d.border }};background:{{ d.bg }};border-radius:2px;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:{{ d.color }}">{{ d.label }}</span></sc-for>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;font:400 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#93a0ae">
+            <button onClick="{{ devNext }}" style="height:22px;padding:0 10px;border:1px solid #2c3641;background:#141920;border-radius:2px;font:600 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#dde4ec" style-hover="background:#1a2028">{{ devNextLabel }}</button>
+            <button onClick="{{ devBle }}" style="height:22px;padding:0 10px;border:1px solid {{ devBleBtnBorder }};background:#141920;border-radius:2px;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:{{ devBleBtnColor }}">{{ devBleLabel }}</button>
+            <button onClick="{{ devReset }}" style="height:22px;padding:0 10px;border:1px solid #222a34;background:transparent;border-radius:2px;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#93a0ae" style-hover="border-color:#2c3641;color:#fff">reset</button>
+            <span style="flex:1"></span><span>records <span style="color:#dde4ec">{{ devRecords }}</span>/3600</span>
+            <div style="width:120px;height:4px;background:#1a2028;border-radius:2px;overflow:hidden"><div style="width:{{ devPct }};height:100%;background:{{ devPctColor }}"></div></div>
+          </div>
+          <div style="font:400 var(--fs-s)/1.5 'IBM Plex Mono',monospace;color:#93a0ae;min-height:20px">
+            <sc-for list="{{ devLog }}" as="l" hint-placeholder-count="0"><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><span style="color:#5b6673">›</span> {{ l }}</div></sc-for>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</section>
+
+<footer style="display:flex;align-items:center;gap:12px;padding:0 var(--pad);border-top:1px solid #222a34;background:#0f1318;font:400 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#5b6673;min-width:0;white-space:nowrap;overflow:hidden">
+  <span style="color:{{ snapColor }}">{{ snapGlyph }}</span><span style="overflow:hidden;text-overflow:ellipsis">{{ snapText }}</span><span style="flex:1"></span>
+  <span style="flex:none">{{ footRight }}</span>
+</footer>
+
+<sc-if value="{{ paletteOpen }}" hint-placeholder-val="{{ false }}">
+  <div onClick="{{ closePalette }}" style="position:absolute;inset:0;background:rgba(5,8,11,.62);display:flex;justify-content:center;align-items:flex-start;padding-top:10vh;z-index:50">
+    <div onClick="{{ stopProp }}" style="width:min(680px,92vw);background:#0f1318;border:1px solid #2c3641;border-radius:6px;box-shadow:0 30px 80px rgba(0,0,0,.6);overflow:hidden;animation:fadein .12s ease-out">
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #222a34"><span style="color:#5b6673;font:400 14px/1 'IBM Plex Mono',monospace">›</span><input ref="{{ paletteRef }}" value="{{ paletteQ }}" onChange="{{ onPaletteQ }}" onKeyDown="{{ onPaletteKey }}" placeholder="drain Session · run profile load · trip network · eject …" style="flex:1;background:none;border:0;outline:0;font:400 14px/1 'IBM Plex Mono',monospace;color:#dde4ec"><span style="font:400 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#5b6673">{{ paletteCount }}</span></div>
+      <div style="max-height:52vh;overflow:auto">
+        <sc-for list="{{ paletteItems }}" as="c" hint-placeholder-count="0">
+          <div onClick="{{ c.run }}" onMouseEnter="{{ c.hover }}" style="display:flex;align-items:center;gap:12px;padding:7px 14px;background:{{ c.bg }};cursor:pointer;border-left:2px solid {{ c.edge }}">
+            <span style="font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:{{ c.groupColor }};min-width:64px">{{ c.group }}</span>
+            <span style="flex:1;font:400 13px/1.2 'IBM Plex Sans',sans-serif;color:#dde4ec">{{ c.label }}</span>
+            <span style="font:400 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#5b6673">{{ c.hint }}</span>
+          </div>
+        </sc-for>
+      </div>
+      <div style="padding:6px 14px;border-top:1px solid #222a34;font:400 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#5b6673">↑↓ navigate · ↵ run · esc close</div>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ confirmOpen }}" hint-placeholder-val="{{ false }}">
+  <div onClick="{{ closeConfirm }}" style="position:absolute;inset:0;background:rgba(5,8,11,.62);display:flex;justify-content:center;align-items:center;z-index:60">
+    <div onClick="{{ stopProp }}" style="width:min(460px,92vw);background:#0f1318;border:1px solid {{ confirmBorder }};border-radius:6px;box-shadow:0 30px 80px rgba(0,0,0,.6);overflow:hidden;animation:fadein .12s ease-out">
+      <div style="padding:14px 16px 6px;font:600 14px/1.2 'IBM Plex Sans',sans-serif;color:#fff">{{ confirmTitle }}</div>
+      <div style="padding:0 16px 14px;font:400 var(--fs)/1.5 'IBM Plex Sans',sans-serif;color:#93a0ae">{{ confirmBody }}</div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;padding:10px 16px;border-top:1px solid #222a34;background:#0a0d11">
+        <button onClick="{{ closeConfirm }}" style="height:26px;padding:0 12px;border:1px solid #222a34;background:transparent;border-radius:3px;font:500 var(--fs-s)/1 'IBM Plex Mono',monospace;color:#93a0ae" style-hover="border-color:#2c3641;color:#fff">cancel</button>
+        <button onClick="{{ confirmOk }}" style="height:26px;padding:0 12px;border:1px solid {{ confirmBtnBorder }};background:{{ confirmBtnBg }};border-radius:3px;font:600 var(--fs-s)/1 'IBM Plex Mono',monospace;color:{{ confirmBtnColor }}">{{ confirmOkLabel }}</button>
+      </div>
+    </div>
+  </div>
+</sc-if>
+</div></x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;density&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;dense&quot;,&quot;options&quot;:[&quot;dense&quot;,&quot;comfortable&quot;],&quot;tsType&quot;:&quot;'dense'|'comfortable'&quot;,&quot;section&quot;:&quot;Layout&quot;},&quot;split&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:50,&quot;min&quot;:30,&quot;max&quot;:70,&quot;step&quot;:5,&quot;unit&quot;:&quot;%&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Layout&quot;},&quot;liveData&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Data&quot;}}">
+const C={bg0:'#0a0d11',bg1:'#0f1318',bg2:'#141920',bg3:'#1a2028',line:'#222a34',line2:'#2c3641',fg:'#dde4ec',fg2:'#93a0ae',fg3:'#5b6673',green:'#5be37a',red:'#ff6b6b',yel:'#f5c542',cyan:'#5fd7e0',mag:'#e08aff',fatal:'#e03e46',blue:'#6f9dff',trace:'#3aa860'};
+const LVL={trace:C.trace,debug:C.blue,info:C.fg2,warn:C.cyan,alarm:C.mag,error:C.yel,fatal:C.fatal,test:C.fg};
+const SPIN=['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏'];
+const KINDS=['KILL','PAUSE','RESET'];
+const BOUNDS=['outbox_append','checkpoint','claim_write','stream_ack_received','stream_ack_committed'];
+const DEVSTEPS=['Advertise','Interrogate','Own','Set Session','Steps','Get Logs','Clear Session'];
+const METRICS=['heart_rate','resting_hr','steps','spo2','hrv'];
+const PANELS={monitor:['registry','tele','logs','lifecycle','sessions'],tests:['suites','live','artifacts'],simulate:['fleet','faults','breakers','sims']};
+const PANEL_LABEL={registry:'Registry',tele:'SuiteSnapshot',logs:'Logs',lifecycle:'Lifecycle',sessions:'Sessions',suites:'Suites',live:'Live',artifacts:'Artifacts',fleet:'Edge fleet',faults:'FaultWalker',breakers:'Breakers',sims:'Simulators'};
+const LS='salus-gui.v2.layout';
+const SERVICES=[
+ {name:'Network',port:57000,aux:'',bin:'network',hub:true,role:'registry · heartbeat · logs · telemetry'},
+ {name:'Authentication',port:57010,aux:'JWKS :57011',bin:'authentication',store:'postgres',role:'credential authority · RS256 JWT issuer'},
+ {name:'Session',port:57020,aux:'ext_authz :57021',bin:'session',store:'postgres',role:'public-client lifecycle · ejection point'},
+ {name:'Protocol',port:57050,aux:'',bin:'protocol',store:'postgres',role:'protocol revisions · assignments · acks'},
+ {name:'Health',port:57030,aux:'',bin:'health',store:'clickhouse',role:'StreamHealth bidi ingest · committed ledger'},
+ {name:'Therapy',port:57040,aux:'',bin:'therapy',store:'clickhouse',role:'StreamTherapy bidi ingest · active registry'}];
+const TELE=[
+ ['Network','PushNetworkStats','CS','in',5,6200,120,180,420,900],
+ ['Network','StreamSuiteSnapshot','SS','in',1,90,14200,60,140,300],
+ ['Network','StreamLogs','SS','in',3,80,2100,40,110,260],
+ ['Network','Register','U','in',0.01,40,20,210,380,600],
+ ['Network','Admin.Ping','U','out',1.2,60,60,140,300,700],
+ ['Authentication','Authenticate','U','in',0.3,420,980,2100,3400,5200,'edge'],
+ ['Authentication','OpenSession','U','out',0.3,260,80,900,1600,2800],
+ ['Session','OpenSession','U','in',0.3,260,80,700,1300,2400],
+ ['Session','ListSessions','U','in',0.2,40,1800,300,600,1100],
+ ['Session','EjectSession','U','in',0.01,90,40,800,1200,2000],
+ ['Protocol','PullAssignment','U','in',0.4,180,9600,1400,2600,4800,'edge'],
+ ['Protocol','WatchAssignment','SS','in',0.05,60,240,90,200,400,'edge'],
+ ['Protocol','AckAssignment','U','in',0.3,220,60,1100,2000,3600,'edge'],
+ ['Protocol','ReportProgress','U','in',0.6,340,60,1000,1900,3300,'edge'],
+ ['Health','StreamHealth','BD','in',24,7200,480,320,900,2400,'edge','ch'],
+ ['Health','GetHealthStats','U','in',0.5,40,260,120,260,500],
+ ['Health','SubscribeHealthEvents','SS','in',0.1,60,5200,80,180,360],
+ ['Therapy','StreamTherapy','BD','in',12,4100,240,340,950,2600,'edge','ch'],
+ ['Therapy','GetTherapyStats','U','in',0.5,40,280,120,270,520],
+ ['Therapy','ApplyReconciliationDecision','U','in',0.01,300,120,1800,3000,5000]];
+const LOGBANK={
+ Network:[['info','Network|Heartbeat','heartbeat ok — 5 registered, 0 failing'],['info','Network|Snapshot','StreamSuiteSnapshot subscriber attached (salus-gui)'],['debug','Network|Aggregator','aggregated 5 digests · 20 rows · p50 via log-interp'],['warn','Network','component=Health dropped 2 digest(s) between seq=4812 and seq=4815']],
+ Authentication:[['info','Authentication','Authenticate client_id=edge-7f3a91 → jti=a91c exp=+900s'],['info','Authentication','OpenSession → Session ok (12 ms)'],['debug','Authentication|Jwks','/jwks.json served · cache-control max-age=300']],
+ Session:[['info','Session|Authz','ext_authz allow x-session-id=a91c last_heard=0s'],['debug','Session','key-timeout sweep: 0 expired'],['info','Session','ListSessions → 4 live']],
+ Protocol:[['info','Protocol','PullAssignment edge=e-011 rev=r17 → NOT_MODIFIED'],['info','Protocol','AckAssignment edge=e-004 rev=r17 activated'],['debug','Protocol','WatchAssignment wake: 1 activation']],
+ Health:[['info','Health|StreamHealth','hello edge=e-011 epoch=3 → StreamReady committed=1,204'],['debug','Health|StreamHealth','IngestAck seq=1,205 committed=1,205'],['warn','Health|StreamHealth','poison seq=1,206 → REJECT_TERMINAL HEALTH_UNIT_MISMATCH (watermark advanced)'],['info','Health|Admission','active=4/1024 · budget 1 MiB/stream']],
+ Therapy:[['info','Therapy|StreamTherapy','hello edge=e-004 epoch=1 → StreamReady committed=340'],['debug','Therapy|StreamTherapy','IngestAck seq=341 committed=341'],['info','Therapy|Registry','3 running sessions'],['info','Therapy','ApplyReconciliationDecision d-88 → canonical run selected']]};
+const SUITES=[
+['HarnessSelfTest','harness','Harness Foundations + Registry Lint','base',''],
+['Component','component','gRPC Patterns via Envoy','base','E'],
+['Auth','auth','Two-Plane Auth + Ejection','base','EP'],
+['Bench','bench','ZeroMQ Pub/Sub Benchmark','base',''],
+['Records','records','Records Building Blocks','base',''],
+['ProtocolStore','protocolstore','Protocol Store Contention','reliability','P'],
+['EdgeControlStore','edgecontrolstore','EdgeControl Configuration Store','reliability','P'],
+['ProtocolService','protocolservice','Protocol Service','base','P'],
+['EdgeSync','edgesync','Edge Protocol Sync','base','EP'],
+['EdgeApp','edgeapp','Application Control + Execution','base','EP'],
+['Vault','vault','Edge SQLite Store','base',''],
+['StreamProbe','streamprobe','Bidi Concurrency + Admission','reliability',''],
+['HealthStream','healthstream','Acknowledged Health Stream','reliability',''],
+['HealthLedger','healthledger','Durable Health Ledger','reliability','C'],
+['HealthQuery','healthquery','Health Query + Fan-out','reliability','C'],
+['HealthStress','healthstress','Health Fleet Stress','load','C'],
+['Delivery','delivery','Durable-Delivery Walking Skeleton','reliability',''],
+['Protocol','protocol','Contract Corpus','base',''],
+['ProtocolUnit','protocolunit','Import Pipeline','base',''],
+['HealthUnit','healthunit','Health Foundation','base',''],
+['TherapyUnit','therapyunit','BlueBase Contracts','base',''],
+['TherapyDevice','therapydevice','Device Execution','base',''],
+['TherapyCoordinator','therapycoordinator','Session Execution','base',''],
+['TherapyStream','therapystream','Acknowledged Therapy Stream','reliability',''],
+['TherapyLedger','therapyledger','Durable Therapy Ledger','reliability','C'],
+['EdgeIntegration','edgeintegration','Health/Therapy Aligned Integration','reliability','C'],
+['EdgeSmoke','edgesmoke','Fast Dual-Plane Smoke','base',''],
+['DeliveryModel','deliverymodel','Cross-Store Delivery Oracle','reliability','C'],
+['IdentityReconciliation','identityreconciliation','Offline Reconciliation Ownership','reliability','C'],
+['FleetResilience','fleetresilience','Both-Plane Reconnect Storm','load','C'],
+['Data','data','ClickHouse Bring-up Smoke','base','C']].map(r=>({name:r[0],key:r[1],desc:r[2],profile:r[3],needs:r[4]}));
+const CHECKS={
+ healthstress:['20-Edge fleet — exact logical row count :: 4,000 rows','backlog burst — 50 events committed','reconnect storm — every Edge resumed at its committed watermark','slow-subscriber isolation — fast subscriber still receives','resource bound — admission active-stream count 0'],
+ fleetresilience:['fleet upload — 20 Edges on both planes','reconnect storm — both services restarted mid-flight','cross-store oracle — no acknowledged loss, no duplicate','admission active streams 0 on both services','slow SubscribeTherapyEvents never stalls ingest'],
+ component:['Echo (Unary)','CountDown (Server stream)','Accumulate (Client stream)','Chat (Bidirectional)','jwt_authn rejects missing bearer','ext_authz allows live session'],
+ auth:['Authenticate ×5 UUID clients','Register through the gated edge','4 patterns per client','EjectSession → PERMISSION_DENIED at edge','─── Sessions ─── renders both planes'],
+ healthstream:['hello/ready — current watermarks','ordered acks','reconnect-resume from committed watermark','dedup replay — no second row','poison → REJECT_TERMINAL, watermark advances','unbound edge_id rejected','§17 admission shedding RESOURCE_EXHAUSTED'],
+ therapystream:['hello/ready — current watermarks','ordered acks','reconnect-resume from committed watermark','dedup replay — no second row','poison → REJECT_TERMINAL, watermark advances','§17 admission shedding RESOURCE_EXHAUSTED'],
+ delivery:['KILL@outbox_append converged','KILL@checkpoint converged','PAUSE@claim_write converged','RESET@stream_ack_received converged','RESET@stream_ack_committed converged','oracle — no gap / duplicate / orphan / hole'],
+ harness:['scenario / invariants / artifacts','typed readiness','perf-budget ratchet within budget','FaultWalker enumerates 15 interleavings','registry lint — every run_test.py registered'],
+ edgesmoke:['dual upload','ack-boundary break resumes at committed (not 0)','dedup replay','terminal poison on each plane','GetStats count algebra'],
+ bench:['throughput sweep','latency p50/p99','sustained 30s','fan-out ×8','backpressure / HWM','topic filtering'],
+ _:['validate clean','golden round-trip','malformed → stable codes','idempotent repeat','restart reconstruction']};
+const COMPS={component:[['Authentication',57010],['Session',57020],['Server',58001],['Client',58002],['Network',57000]],auth:[['Network',57000],['Authentication',57010],['Session',57020],['AuthServer',58001],['AuthClient',58002]],healthstress:[['Health',58034]],healthstream:[['Health',58030],['Health',58031]],healthledger:[['Health',58032]],healthquery:[['Health',58033]],therapystream:[['Therapy',58040],['Therapy',58041]],fleetresilience:[['Health',58052],['Therapy',58053]],edgesync:[['Session',57020],['Authentication',57010],['Protocol',57050],['Edge',58060]],edgeapp:[['Edge',58070]],protocolservice:[['Protocol',58050]],bench:[['Bench',58030]],delivery:[['DeliveryProbeServer',58001],['DeliveryProbeClient',58002]],edgesmoke:[['Health',58030],['Therapy',58040]],edgeintegration:[['Health',58030],['Therapy',58040]]};
+const pad2=n=>String(n).padStart(2,'0');
+const fmtClock=d=>`${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}:${pad2(d.getUTCSeconds())} UTC`;
+const fmtTs=ms=>{const d=new Date(ms);return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}.${String(d.getMilliseconds()).padStart(3,'0')}`};
+const fmtHms=ms=>{const d=new Date(ms);return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`};
+const fmtInt=n=>Math.round(n).toLocaleString('en-US');
+const si=(v,s)=>{const a=Math.abs(v);if(a>=1e9)return (v/1e9).toFixed(1)+'G'+s;if(a>=1e6)return (v/1e6).toFixed(1)+'M'+s;if(a>=1e3)return (v/1e3).toFixed(1)+'k'+s;return v.toFixed(v<10&&v>0?1:0)+s};
+const fmtRate=v=>si(v,'/s');
+const fmtBps=v=>{if(v>=1048576)return (v/1048576).toFixed(1)+' MB/s';if(v>=1024)return (v/1024).toFixed(1)+' KB/s';return v.toFixed(0)+' B/s'};
+const fmtUs=us=>us>=1000?(us/1000).toFixed(2)+' ms':Math.round(us)+' µs';
+const fmtUptime=s=>{s=Math.max(0,Math.floor(s));const h=Math.floor(s/3600),m=Math.floor(s%3600/60);return h?`${h}h ${pad2(m)}m`:`${m}m ${pad2(s%60)}s`};
+const fmtAgo=s=>s<60?`${Math.floor(s)}s`:s<3600?`${Math.floor(s/60)}m`:`${Math.floor(s/3600)}h ${pad2(Math.floor(s%3600/60))}m`;
+const hash=str=>{let h=0x811c9dc5;for(const ch of String(str)){h^=ch.charCodeAt(0);h=Math.imul(h,0x01000193)>>>0}let out='',x=h||1;for(let i=0;i<4;i++){x^=x<<13;x>>>=0;x^=x>>>17;x^=x<<5;x>>>=0;out+=x.toString(16).padStart(8,'0')}return out};
+const rnd=(a,b)=>a+Math.random()*(b-a);
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+const TAG={RUNNING:['▶ RUNNING',C.green],DRAINING:['◐ DRAINING',C.yel],DRAINED:['○ DRAINED',C.fg3],STARTING:['◌ STARTING',C.cyan],STOPPED:['■ STOPPED',C.red],EVICTED:['✗ EVICTED',C.red]};
+
+class Component extends DCLogic {
+  rootRef=React.createRef(); paletteRef=React.createRef(); logRef=React.createRef(); liveRef=React.createRef(); wbRef=React.createRef();
+  state=this.initState();
+  initState(){ const now=Date.now(); let saved=null; try{ saved=JSON.parse(localStorage.getItem(LS)||'null'); }catch(e){}
+    const wb={}; Object.keys(PANELS).forEach(t=>{ const sv=saved&&saved.wb&&saved.wb[t]; const order=sv&&Array.isArray(sv.order)&&sv.order.length===PANELS[t].length&&sv.order.every(p=>PANELS[t].includes(p))?sv.order:[...PANELS[t]]; const hidden=sv&&Array.isArray(sv.hidden)?sv.hidden.filter(p=>PANELS[t].includes(p)):[]; wb[t]={order,hidden}; });
+    const s={tab:'monitor',tick:0,now,selected:null,focus:null,wbW:null,palette:{open:false,q:'',idx:0},confirm:null,logPaused:false,wb,drag:null,dragOver:null,split:saved&&saved.split?saved.split:null,
+      infra:{envoy:true,postgres:true,clickhouse:true},
+      services:SERVICES.map((x,i)=>({...x,status:'RUNNING',pid:41207+i*13,startedAt:now-(5400+i*731)*1000,fail:0,seen:i%5,rpcActive:1+(i%3),queue:0,trace:false,debug:false,threads:4,t:0})),
+      tele:TELE.map(r=>({c:r[0],m:r[1],k:r[2],d:r[3],rate:r[4],bi:r[5],bo:r[6],p50:r[7],p95:r[8],p99:r[9],edge:r[10]==='edge',ch:r[11]==='ch',calls:Math.floor(r[4]*5400*rnd(.6,1.1)),err:0,denied:0,biC:r[5],boC:r[6],p99C:r[9],curRate:r[4],stalled:false})),
+      logs:[],pending:[],logSeq:0,levels:{trace:false,debug:false,info:true,warn:true,alarm:true,error:true,fatal:true,test:true},
+      lifecycle:[],lcSeq:0,
+      sessions:[['edge-7f3a91','e-011',5400,900,0],['edge-2b1e44','e-004',3120,900,2],['edge-c09d17','e-017',880,900,1],['edge-5ae2b0','e-002',14400,900,3]].map(r=>({client:r[0],edge:r[1],since:now-r[2]*1000,keyTimeout:r[3],heard:r[4],status:'live'})),
+      snapSeq:4821,staleSince:null,hist:{},
+      sel:new Set(),runs:{},queue:[],current:null,history:[],artifacts:[],sanitize:'release',flags:{speed:true,plain:false,warnAsError:false},profileFilter:'all',sweep:null,lastRun:null,
+      fleet:{running:false,edges:20,rate:8,jitter:15,health:true,therapy:true,ceiling:64,list:[],shed:0},
+      faults:{cells:{},walking:false,queue:[],seed:12345,depth:1,oracle:null,cur:null,done:0},
+      hsim:{seed:4242,scale:60,metric:'heart_rate',digest:null,events:0,identical:null,last:null},
+      dev:{step:-1,ble:false,records:0,log:[]}};
+    SERVICES.forEach((x,i)=>{ if(x.hub) return; s.lifecycle.push({ts:s.services[i].startedAt,service:x.name,type:'started',msg:`registered @ localhost:${x.port}`,seq:++s.lcSeq}); });
+    s.lifecycle.push({ts:now-2400*1000,service:'Health',type:'reconnected',msg:'push stream re-opened after disconnect',seq:++s.lcSeq});
+    s.lifecycle.reverse(); for(let i=0;i<32;i++) this.pushHist(s,true);
+    for(let i=0;i<26;i++){ const svc=SERVICES[1+(i%5)]; const b=LOGBANK[svc.name]; const e=b[i%b.length]; s.logs.push({ts:now-(26-i)*1300,service:svc.name,level:e[0],label:e[1],msg:e[2],seq:++s.logSeq}); }
+    return s; }
+  persist(){ try{ localStorage.setItem(LS,JSON.stringify({wb:this.state.wb,split:this.state.split})); }catch(e){} }
+  componentDidMount(){ this.timer=setInterval(()=>this.tick(),250); this.onKey=e=>{ if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();this.togglePalette();} else if(e.key==='Escape'){ this.setState({palette:{open:false,q:'',idx:0},confirm:null}); } }; window.addEventListener('keydown',this.onKey);
+    const measure=()=>{ const el=this.wbRef.current; const w=el?el.clientWidth:window.innerWidth; if(w&&w!==this.state.wbW) this.setState({wbW:w}); };
+    if(typeof ResizeObserver!=='undefined'&&this.wbRef.current){ this.ro=new ResizeObserver(measure); this.ro.observe(this.wbRef.current); } else { this.onResize=measure; window.addEventListener('resize',measure); }
+    measure(); }
+  componentWillUnmount(){ clearInterval(this.timer); window.removeEventListener('keydown',this.onKey); if(this.ro) this.ro.disconnect(); if(this.onResize) window.removeEventListener('resize',this.onResize); this.splitUp(); }
+  componentDidUpdate(){ const s=this.state; const p=this._prev||{}; if(s.palette.open&&!p.open&&this.paletteRef.current) this.paletteRef.current.focus(); if(!s.logPaused&&this.logRef.current&&s.logs!==p.logs){const el=this.logRef.current;el.scrollTop=el.scrollHeight;} if(this.liveRef.current&&s.runs!==p.runs){const el=this.liveRef.current;el.scrollTop=el.scrollHeight;} this._prev={open:s.palette.open,logs:s.logs,runs:s.runs}; }
+  svc(n,name){return n.services.find(x=>x.name===name)}
+  isDown(n,name){const v=this.svc(n,name);return !v||!(v.status==='RUNNING'||v.status==='DRAINING')}
+  chaos(n){return {session:this.isDown(n,'Session'),network:this.isDown(n,'Network'),clickhouse:!n.infra.clickhouse}}
+  log(n,service,level,label,msg){ const e={ts:Date.now(),service,level,label,msg,seq:++n.logSeq}; if(this.isDown(n,'Network')&&service!=='salus-gui'){ n.pending=[...n.pending,e].slice(-200); return; } n.logs=[...n.logs,e].slice(-300); }
+  lc(n,service,type,msg){ n.lifecycle=[{ts:Date.now(),service,type,msg,seq:++n.lcSeq},...n.lifecycle].slice(0,80); }
+  mutate(fn){ this.setState(s=>{ const n={...s}; fn(n); return n; }); }
+  setSvc(n,name,fn){ n.services=n.services.map(v=>v.name===name?fn({...v}):v); }
+  needsOk(n,needs){ for(const ch of (needs||'')){ if(ch==='E'&&!n.infra.envoy) return {ok:false,what:'Envoy edge',fix:'./infra/envoy/up.sh'}; if(ch==='P'&&!n.infra.postgres) return {ok:false,what:'Postgres',fix:'./infra/db/up.sh'}; if(ch==='C'&&!n.infra.clickhouse) return {ok:false,what:'ClickHouse',fix:'./infra/db/up.sh'}; } return {ok:true}; }
+  tick(){ this.setState(s=>{ const n={...s,tick:s.tick+1,now:Date.now()}; if(n.tick%4!==0) return n; const live=this.props.liveData??true; this.stepServices(n); if(live){this.stepTele(n);this.stepLogs(n);} this.stepSessions(n); this.stepFleet(n); this.stepRun(n); this.stepFaults(n); this.stepDev(n); return n; }); }
+  stepServices(n){ const ch=this.chaos(n); const sec=Math.floor(n.tick/4);
+    n.services=n.services.map(v=>{ v={...v};
+      if(v.status==='RUNNING'){ if(!ch.network||v.hub){ v.seen=sec%5; v.fail=0; } else v.seen+=1; v.rpcActive=Math.max(0,Math.min(12,v.rpcActive+Math.round(rnd(-1,1)))); v.queue=Math.random()<.1?1:0; }
+      else if(v.status==='DRAINING'){ v.t-=1; v.rpcActive=Math.max(0,v.rpcActive-1); if(v.t<=0){ v.status='DRAINED'; v.rpcActive=0; this.log(n,v.name,'info',v.name,'drain complete — 0 in-flight RPCs, refusing new ones'); } }
+      else if(v.status==='STARTING'){ v.t-=1; if(v.t<=0){ v.status='RUNNING'; v.startedAt=Date.now(); v.seen=0; v.fail=0; v.rpcActive=1; if(v.hub){ const k=n.pending.length; n.logs=[...n.logs,...n.pending].slice(-300); n.pending=[]; this.log(n,'Network','info','Network|Logs',`StreamLogs resumed — replayed ${k} line(s) since seq=${n.logSeq-k}`); } else { this.lc(n,v.name,'started',`registered @ localhost:${v.port}`); this.log(n,v.name,'info',v.name,`listening on 0.0.0.0:${v.port} · threads=4 · registered with Network`); } } }
+      else if(v.status==='STOPPED'&&!v.hub){ v.seen+=1; if(v.fail<3&&v.seen%5===0){ v.fail+=1; if(v.fail===3){ v.status='EVICTED'; this.lc(n,v.name,'error','heartbeat: 3 consecutive ping failures — evicted'); this.log(n,'Network','error','Network|Heartbeat',`${v.name} evicted after 3 failures (localhost:${v.port})`); } } }
+      else if(v.status==='EVICTED'||v.status==='DRAINED'){ v.seen+=1; }
+      return v; });
+    if(ch.network&&!n.staleSince) n.staleSince=Date.now(); if(!ch.network) n.staleSince=null; }
+  stepTele(n){ const ch=this.chaos(n); if(ch.network) return; n.snapSeq+=1; const f=n.fleet; const conn=f.running?f.list.filter(e=>e.st==='connected').length:0;
+    n.tele=n.tele.map(r=>{ r={...r}; const v=this.svc(n,r.c); const up=v&&v.status==='RUNNING'; let rate=r.rate;
+      if(r.m==='StreamHealth') rate=r.rate+(f.health?conn*f.rate:0); if(r.m==='StreamTherapy') rate=r.rate+(f.therapy?conn*f.rate*.6:0);
+      if(!up){ r.biC=0;r.boC=0;r.curRate=0; return r; }
+      if(r.edge&&(ch.session||!n.infra.envoy)){ r.denied+=Math.random()<.5?1:0; r.biC=0;r.boC=0;r.curRate=0; return r; }
+      if(r.d==='out'&&r.m==='OpenSession'&&ch.session){ r.err+=1; r.curRate=0; return r; }
+      if(v.store==='postgres'&&!n.infra.postgres&&r.d==='in'&&r.k==='U'&&Math.random()<.6){ r.err+=1; }
+      const dc=rate>=1?Math.round(rate*rnd(.75,1.25)):(Math.random()<rate?1:0); r.calls+=dc; r.curRate=rate;
+      const scale=rate/(r.rate||1); r.biC=r.bi*Math.max(scale,.02)*rnd(.85,1.15); r.boC=r.bo*Math.max(scale,.02)*rnd(.85,1.15);
+      r.stalled=r.ch&&ch.clickhouse; r.p99C=r.stalled?r.p99*rnd(3,6):r.p99*rnd(.9,1.15); if(r.stalled&&Math.random()<.4) r.err+=1;
+      return r; }); this.pushHist(n); }
+  pushHist(n,jitter){ const H=32; const j=()=>jitter?rnd(.85,1.15):1; const agg={}; const add=(k,rpc,io)=>{ const a=agg[k]||(agg[k]={rpc:0,io:0}); a.rpc+=rpc; a.io+=io; };
+    n.tele.forEach(r=>{ const rpc=r.d==='in'?(r.curRate||0)*j():0, io=((r.biC||0)+(r.boC||0))*j(); add(r.c,rpc,io); if(r.edge) add('Envoy',(r.curRate||0)*j(),io); });
+    const h={...n.hist}; Object.keys(agg).forEach(k=>{ const p=h[k]||{rpc:Array(H).fill(agg[k].rpc),io:Array(H).fill(agg[k].io)}; h[k]={rpc:[...p.rpc.slice(1),agg[k].rpc],io:[...p.io.slice(1),agg[k].io]}; }); n.hist=h; }
+  stepLogs(n){ const ch=this.chaos(n); const running=n.services.filter(v=>v.status==='RUNNING'&&!v.hub); const k=Math.random()<.6?1:2;
+    for(let i=0;i<k&&running.length;i++){ const v=pick(running); const b=LOGBANK[v.name]; let e=pick(b); if(e[0]==='warn'&&Math.random()<.75) e=b[0]; this.log(n,v.name,e[0],e[1],e[2]); }
+    if(ch.network&&Math.random()<.6&&running.length){ const v=pick(running); const age=(Date.now()-(n.staleSince||Date.now()))/1000; this.log(n,v.name,'warn',v.name+'|Registry',`Network unreachable — re-register backoff ${[1,2,4,8,16,30][Math.min(5,Math.floor(age/4))]}s · publisher ring ${Math.min(60,Math.floor(age))}/60`); }
+    if(ch.clickhouse&&Math.random()<.6){ const v=Math.random()<.5?'Health':'Therapy'; if(!this.isDown(n,v)) this.log(n,v,'error',v+'|Ledger','ClickHouse :59000 unreachable — commit held; committed watermark frozen while received advances'); }
+    if(ch.session&&Math.random()<.5&&!this.isDown(n,'Authentication')) this.log(n,'Authentication','error','Authentication','OpenSession → Session UNAVAILABLE — edge ext_authz now fails CLOSED (failure_mode_allow=false)');
+    if(!n.infra.postgres&&Math.random()<.5){ const v=pick(['Authentication','Session','Protocol']); if(!this.isDown(n,v)) this.log(n,v,'error',v+'|Records',`Postgres :55432 connection refused — pool retry (attempt ${1+Math.floor(Math.random()*5)})`); }
+    if(!n.infra.envoy&&Math.random()<.3&&!this.isDown(n,'Session')) this.log(n,'Session','warn','Session','no ext_authz checks for 10s — edge down? sessions age toward key-timeout');
+    if(!ch.network&&Math.random()<.04&&running.length) this.log(n,'Network','warn','Network',`component=${pick(running).name} dropped 1 digest between seq=${n.snapSeq-3} and seq=${n.snapSeq-1}`); }
+  stepSessions(n){ const ch=this.chaos(n); n.sessions=n.sessions.map(s=>{ s={...s}; if(s.status==='ejected') return s; if(ch.session||!n.infra.envoy){ s.status='denied'; s.heard+=1; } else { s.status='live'; s.heard=Math.random()<.5?0:s.heard+1; if(s.heard>6) s.heard=0; } return s; }); }
+  stepFleet(n){ const f={...n.fleet}; if(!f.running){ n.fleet=f; return; } const ch=this.chaos(n); const hUp=!this.isDown(n,'Health'),tUp=!this.isDown(n,'Therapy'); const planeUp=(f.health&&hUp)||(f.therapy&&tUp); let shedNew=0;
+    f.list=f.list.map((e,i)=>{ e={...e}; if(i>=f.ceiling){ if(e.st!=='shed') shedNew++; e.st='shed'; return e; } if(e.st==='shed') e.st='connected'; if(!planeUp){ e.st='reconnecting'; e.rt=1+Math.floor(Math.random()*3); return e; }
+      if(e.st==='reconnecting'){ e.rt-=1; if(e.rt<=0){ e.st='connected'; e.rx=e.cm; e.epoch+=1; } return e; }
+      const d=Math.max(0,Math.round(f.rate*rnd(1-f.jitter/100,1+f.jitter/100))); e.rx+=d; if(!ch.clickhouse) e.cm=e.rx; return e; });
+    f.shed+=shedNew; n.fleet=f; }
+  stepRun(n){ if(!n.current) return; const r={...n.runs[n.current],comps:[...(n.runs[n.current].comps||[])],results:[...(n.runs[n.current].results||[])],diag:[...(n.runs[n.current].diag||[])]}; const spec=SUITES.find(x=>x.key===n.current); r.elapsed+=1; r.step+=1;
+    const nChecks=r.checks.length; const checkSteps=Math.ceil(nChecks/2); const total=3+checkSteps+1;
+    if(r.step===1){ r.phase='pre-flight'; }
+    else if(r.step===2){ r.phase=`launching ${r.comps.map(c=>c.name).join(', ')}`; r.comps=r.comps.map(c=>({...c,status:'RUNNING'})); }
+    else if(r.step===3){ r.phase='waiting for readiness (typed probes)'; }
+    else if(r.step<=3+checkSteps){ const done=Math.min(nChecks,(r.step-3)*2); const p=this.needsOk(n,spec.needs); for(let i=r.done;i<done;i++){ let ok=Math.random()>.05; if(!p.ok) ok=false; const nm=r.checks[i]; const [name,detail]=nm.split(' :: '); r.results.push({name,ok,detail:ok?(detail||''):(p.ok?'assertion failed — see harness-stderr.log':`${p.what} unreachable mid-run`)}); if(!ok) r.diag.push(`[test] Driver: FAIL ${name}`); } r.done=done; r.phase=`running ${(r.checks[Math.min(nChecks-1,done)]||'').split(' :: ')[0]}`; }
+    else if(r.step===total){ r.phase='tearing down — SIGTERM, join, collect logs'; r.comps=r.comps.map(c=>({...c,status:'EXITED'})); }
+    else { const failed=r.results.filter(x=>!x.ok).length; r.state=failed?'failed':'passed'; r.phase=r.state; r.progress=100; n.runs={...n.runs,[n.current]:r};
+      n.history=[{key:spec.key,name:spec.name,state:r.state,elapsed:r.elapsed,at:Date.now(),sanitize:n.sanitize,note:failed?`${failed} ✗`:''},...n.history].slice(0,14);
+      const dir=`bin/log/${spec.name}/log/artifacts/`; const at=Date.now(); n.artifacts=[{path:dir+'junit.xml',suite:spec.name,kind:'junit',at},{path:dir+'summary.json',suite:spec.name,kind:'summary',at},...(spec.key==='harness'?[{path:'test/HarnessSelfTest/perf_budget.yaml',suite:spec.name,kind:'perf-budget',at}]:[]),...(failed?[{path:`bin/log/${spec.name}/log/harness-stderr.log`,suite:spec.name,kind:'stderr',at}]:[]),...n.artifacts].slice(0,24);
+      n.lastRun=spec.key; this.log(n,'salus-gui','test','Harness',`${spec.name} · ${spec.desc} — ${r.state.toUpperCase()} (${r.elapsed}s${n.sanitize!=='release'?' · '+n.sanitize:''})`); this.nextRun(n); return; }
+    r.progress=Math.min(99,Math.round(100*r.step/(total+1))); n.runs={...n.runs,[n.current]:r}; }
+  initRun(n,key){ const spec=SUITES.find(x=>x.key===key); const checks=CHECKS[key]||CHECKS._; const comps=(COMPS[key]||[[spec.name,58001]]).map(c=>({name:c[0],port:c[1],pid:50000+Math.floor(Math.random()*9000),status:'WAITING'})); n.runs={...n.runs,[key]:{state:'running',step:0,elapsed:0,progress:0,phase:'initialising',checks,comps,results:[],diag:[],done:0,started:Date.now()}}; n.current=key; }
+  nextRun(n){ while(n.queue.length){ const k=n.queue[0]; n.queue=n.queue.slice(1); const spec=SUITES.find(s=>s.key===k); const p=this.needsOk(n,spec.needs); n.sweep={...n.sweep,index:(n.sweep?n.sweep.index:0)+1};
+      if(!p.ok){ n.runs={...n.runs,[k]:{state:'skipped',reason:`${p.what} not running — ${p.fix}`}}; n.history=[{key:k,name:spec.name,state:'skipped',elapsed:0,at:Date.now(),sanitize:n.sanitize,note:`⊘ ${p.what} down`},...n.history].slice(0,14); n.lastRun=k; continue; }
+      this.initRun(n,k); return; } n.current=null; if(n.sweep) n.sweep={...n.sweep,done:true}; }
+  stepFaults(n){ const f={...n.faults,cells:{...n.faults.cells}}; if(f.cur){ const c={...f.cells[f.cur]}; c.t-=1; if(c.t<=0){ const ok=Math.random()>.08; c.state=ok?'pass':'fail'; c.seed=Number(f.seed)+KINDS.length*BOUNDS.indexOf(f.cur.split('@')[1])+KINDS.indexOf(f.cur.split('@')[0]); f.cells[f.cur]=c; f.done+=1; const exp=167; f.oracle={expected:exp,sink:ok?exp:exp-1,outbox:ok?0:1,gap:0,dup:0,orphan:ok?0:1,last:f.cur,ok,seed:c.seed}; if(!ok) this.log(n,'salus-gui','test','FaultWalker',`✗ ${f.cur} — sink ${exp-1}/${exp}, outbox 1 · replay --seed ${c.seed}`); f.cur=null; } else f.cells[f.cur]=c; }
+    if(!f.cur&&f.queue.length){ const k=f.queue[0]; f.queue=f.queue.slice(1); f.cells[k]={state:'running',t:1+Math.floor(Math.random()*2)}; f.cur=k; }
+    if(!f.cur&&!f.queue.length&&f.walking){ f.walking=false; const fails=Object.values(f.cells).filter(c=>c.state==='fail').length; this.log(n,'salus-gui','test','FaultWalker',`matrix walked — ${15-fails} converged, ${fails} failed · junit.xml + summary.json → bin/log/Delivery/log/artifacts/`); }
+    n.faults=f; }
+  stepDev(n){ const d=n.dev; if(d.step===4&&d.records<3600){ n.dev={...d,records:Math.min(3600,d.records+37+Math.floor(Math.random()*20))}; } }
+  setTab=t=>this.setState({tab:t});
+  select=id=>this.setState(s=>({selected:s.selected===id?null:id}));
+  clearSelect=()=>this.setState({selected:null});
+  setFocus=name=>this.setState(s=>({focus:s.focus===name?null:name}));
+  clearFocus=()=>this.setState({focus:null});
+  stopProp=e=>e.stopPropagation();
+  togglePause=()=>this.setState(s=>({logPaused:!s.logPaused}));
+  toggleLevel=k=>this.setState(s=>({levels:{...s.levels,[k]:!s.levels[k]}}));
+  drain(name){ this.mutate(n=>{ const v=this.svc(n,name); if(!v||v.status!=='RUNNING') return; this.setSvc(n,name,x=>({...x,status:'DRAINING',t:3})); this.lc(n,name,'draining','Admin.Drain accepted · deadline 10s'); this.log(n,name,'info',name,`Admin.Drain deadline=10s — ${v.rpcActive} in-flight, refusing new RPCs`); }); }
+  shutdown(name){ this.mutate(n=>{ const v=this.svc(n,name); if(!v||['STOPPED','EVICTED','STARTING'].includes(v.status)) return; this.setSvc(n,name,x=>({...x,status:'STOPPED',rpcActive:0,seen:0})); if(!v.hub){ this.lc(n,name,'stopped','Deregister ok — clean shutdown'); this.log(n,name,'info',name,'Admin.Shutdown accepted — deregister, m_running=false, CQ drain, join, pool last'); } else { this.log(n,'salus-gui','warn','Network','Admin.Shutdown → Network exits; components buffer digests in publisher rings (60 × 1 s) and back off on re-register'); } }); }
+  restart(name){ this.mutate(n=>{ const v=this.svc(n,name); if(!v||v.status==='STARTING') return; const was=v.status==='RUNNING'||v.status==='DRAINING'; this.setSvc(n,name,x=>({...x,status:'STARTING',t:2,pid:x.pid+Math.floor(rnd(3,40)),fail:0,seen:0})); if(was&&!v.hub) this.lc(n,name,'stopped',`restart — SIGTERM → relaunch bin/${v.bin}`); this.log(n,'salus-gui','info','Launcher',`bin/${v.bin} --port ${v.port} ${v.hub?'--register=false --network-monitor=false':'--register true'}`); }); }
+  toggleFlag(name,flag){ this.mutate(n=>{ const v=this.svc(n,name); if(!v) return; const on=!v[flag]; this.setSvc(n,name,x=>({...x,[flag]:on})); this.log(n,name,'info',name,`Admin.Set${flag==='trace'?'Trace':'Debug'} enabled=${on}`); }); }
+  ping(name){ this.mutate(n=>{ const v=this.svc(n,name); if(!v) return; const up=v.status==='RUNNING'||v.status==='DRAINING'; this.log(n,'salus-gui',up?'info':'error','Admin.Ping',`${name} → ${up?`uptime_seconds=${Math.floor((Date.now()-v.startedAt)/1000)} (${Math.round(rnd(140,900))} µs)`:'UNAVAILABLE — failed to connect to localhost:'+v.port}`); }); }
+  profile(name){ this.mutate(n=>{ this.log(n,'salus-gui','info','Admin.GetProfile',`${name} PROFILE_TYPE_CPU duration=10s → bin/log/${name}/profile-${fmtHms(Date.now()).replace(/:/g,'')}.pprof`); }); }
+  resetTele(name){ this.mutate(n=>{ n.tele=n.tele.map(r=>(!name||r.c===name)?{...r,calls:0,err:0,denied:0}:r); this.log(n,'Network','info','Network',`Reset component_name="${name||''}" — ${name?name+' rows cleared':'global wipe'} (digest_seq preserved)`); }); }
+  eject(client){ this.mutate(n=>{ n.sessions=n.sessions.map(s=>s.client===client?{...s,status:'ejected'}:s); this.log(n,'Session','warn','Session',`EjectSession client=${client} → edge denies within one ext_authz check (JWT still valid until exp)`); }); }
+  toggleInfra(k){ this.mutate(n=>{ const up=!n.infra[k]; n.infra={...n.infra,[k]:up}; const label={envoy:'Envoy edge',postgres:'Postgres',clickhouse:'ClickHouse'}[k]; const script=k==='envoy'?`./infra/envoy/${up?'up':'down'}.sh`:`./infra/db/${up?'up':'down'}.sh ${k}`; this.log(n,'salus-gui','info','Infra',`${script} → ${label} ${up?'up':'down'}`);
+    if(k==='clickhouse') this.lc(n,'ClickHouse',up?'started':'error',up?'container up :59000 — held commits flush, committed catches up':'container stopped — Health/Therapy commits hold, received keeps advancing');
+    if(k==='envoy') this.lc(n,'Envoy',up?'started':'stopped',up?'edge listening :58000 · admin :58009':'edge down — no public client reaches any backend');
+    if(k==='postgres') this.lc(n,'Postgres',up?'started':'stopped',up?'salus-postgres up :55432':'salus-postgres stopped — Authentication/Session/Protocol stores unavailable'); }); }
+  ask(title,body,ok,danger,okLabel){ this.setState({confirm:{title,body,ok,danger,okLabel}}); }
+  confirmOk=()=>{ const c=this.state.confirm; this.setState({confirm:null}); if(c&&c.ok) c.ok(); };
+  closeConfirm=()=>this.setState({confirm:null});
+  shutdownAll=()=>this.ask('Network.ShutdownAll — platform kill switch','Fans out Admin.Shutdown to every registered service. Network itself is spared (it is not in its own registry) so it can return the ShutdownAllResponse — stop it separately afterwards.',()=>this.mutate(n=>{ const targets=n.services.filter(v=>!v.hub&&!['STOPPED','EVICTED'].includes(v.status)); targets.forEach(v=>{ this.setSvc(n,v.name,x=>({...x,status:'STOPPED',rpcActive:0,seen:0})); this.lc(n,v.name,'stopped','ShutdownAll → Admin.Shutdown accepted'); }); this.log(n,'Network','warn','Network',`ShutdownAll → ${targets.length} entries accepted · Network spared (not in its own registry)`); }),true,'■ shutdown all');
+  drainAll=()=>this.ask('Network.DrainAll','Fans out Admin.Drain (deadline 10s) to every registered service: stop accepting new RPCs, finish in-flight work. Services stay up, drained.',()=>this.mutate(n=>{ const t=n.services.filter(v=>!v.hub&&v.status==='RUNNING'); t.forEach(v=>{ this.setSvc(n,v.name,x=>({...x,status:'DRAINING',t:3})); this.lc(n,v.name,'draining','DrainAll → Admin.Drain accepted'); }); this.log(n,'Network','info','Network',`DrainAll deadline=10s → ${t.length} entries accepted`); }),false,'◐ drain all');
+  toggleSel(key){ this.mutate(n=>{ const sel=new Set(n.sel); sel.has(key)?sel.delete(key):sel.add(key); n.sel=sel; }); }
+  visibleSuites(){ const p=this.state.profileFilter; return SUITES.filter(t=>p==='all'||t.profile===p); }
+  runKeys(keys){ this.mutate(n=>{ keys=keys.filter(k=>k!==n.current&&!n.queue.includes(k)); if(!keys.length) return; n.queue=[...n.queue,...keys]; n.sweep=n.current||n.queue.length>keys.length?{...n.sweep,total:n.sweep.total+keys.length}:{index:0,total:keys.length,started:Date.now(),done:false}; keys.forEach(k=>{ n.runs={...n.runs,[k]:{...(n.runs[k]||{}),state:'queued'}}; }); if(!n.current) this.nextRun(n); }); }
+  runSelected=()=>this.runKeys(SUITES.filter(s=>this.state.sel.has(s.key)).map(s=>s.key));
+  runAll=()=>this.runKeys(this.visibleSuites().map(s=>s.key));
+  stopRun=()=>this.mutate(n=>{ n.queue.forEach(k=>{ n.runs={...n.runs,[k]:{...n.runs[k],state:'idle'}}; }); n.queue=[]; if(n.current){ const r={...n.runs[n.current],state:'failed',phase:'aborted — SIGINT',progress:100}; n.runs={...n.runs,[n.current]:r}; n.history=[{key:n.current,name:SUITES.find(s=>s.key===n.current).name,state:'failed',elapsed:r.elapsed,at:Date.now(),sanitize:n.sanitize,note:'aborted'},...n.history].slice(0,14); n.lastRun=n.current; n.current=null; } if(n.sweep) n.sweep={...n.sweep,done:true}; });
+  fleetSet(k,v){ this.mutate(n=>{ const f={...n.fleet,[k]:v}; if(k==='edges'&&f.running) f.list=this.resize(f.list,v); n.fleet=f; }); }
+  resize(list,N){ const out=list.slice(0,N); for(let i=out.length;i<N;i++) out.push({i,rx:0,cm:0,st:'connected',epoch:1,rt:0}); return out; }
+  fleetToggle=()=>this.mutate(n=>{ const f={...n.fleet}; if(f.running){ f.running=false; f.list=[]; this.log(n,'Health','info','Health|Admission',`fleet closed — active streams 0/${f.ceiling}`); } else { f.running=true; f.shed=0; f.list=this.resize([],f.edges); const adm=Math.min(f.edges,f.ceiling); this.log(n,'Health','info','Health|Admission',`${f.edges} StreamHealth hellos — admitted ${adm}, shed ${f.edges-adm} (RESOURCE_EXHAUSTED + retry-after)`); if(f.therapy) this.log(n,'Therapy','info','Therapy|Admission',`${f.edges} StreamTherapy hellos — admitted ${adm}`); } n.fleet=f; });
+  storm=()=>{ this.restart('Health'); this.restart('Therapy'); this.mutate(n=>{ const f={...n.fleet}; f.list=f.list.map(e=>({...e,st:e.st==='shed'?'shed':'reconnecting',rt:1+Math.floor(Math.random()*4)})); n.fleet=f; this.log(n,'salus-gui','info','Sim','reconnect storm — Health + Therapy killed and relaunched; edges reconnect with jitter and resume at their committed watermark'); }); };
+  fireFault(k){ this.mutate(n=>{ const f={...n.faults,cells:{...n.faults.cells}}; if(f.cur===k||f.queue.includes(k)) return; f.queue=[...f.queue,k]; f.cells[k]={state:'queued'}; n.faults=f; }); }
+  walk=()=>this.mutate(n=>{ const f={...n.faults}; const all=[]; KINDS.forEach(kd=>BOUNDS.forEach(b=>all.push(kd+'@'+b))); f.queue=all.filter(k=>k!==f.cur); f.cells=Object.fromEntries(all.map(k=>[k,{state:'queued'}])); f.walking=true; f.done=0; f.oracle=null; n.faults=f; this.log(n,'salus-gui','info','FaultWalker',`walking ${all.length} interleavings · depth ${f.depth} · seed ${f.seed} — clean Edge DB + empty sink per case`); });
+  faultSet(k,v){ this.mutate(n=>{ n.faults={...n.faults,[k]:v}; }); }
+  hsSet(k,v){ this.mutate(n=>{ n.hsim={...n.hsim,[k]:v}; }); }
+  hsGen=()=>this.mutate(n=>{ const h={...n.hsim}; const key=`${h.seed}|${h.scale}|${h.metric}`; const d=hash(key); h.identical=h.last===key?(h.digest===d):null; h.digest=d; h.events=Math.round(24*60*({steps:1,heart_rate:12,hrv:4}[h.metric]||2)); h.last=key; n.hsim=h; this.log(n,'salus-gui','test','HealthUnit',`simulator seed=${h.seed} scale=×${h.scale} ${h.metric} → ${fmtInt(h.events)} events · sha ${d.slice(0,16)}${h.identical===true?' · byte-identical ✓':''}`); });
+  devNext=()=>this.mutate(n=>{ const d={...n.dev}; if(d.step>=DEVSTEPS.length-1) return; d.step+=1; const st=DEVSTEPS[d.step]; const lines={'Advertise':'advert decoded — product + features resolved from the frozen capability catalog','Interrogate':'Get Features / Get Status → capability-checked, nothing fabricated','Own':'ownership claimed — device bound to this Edge','Set Session':`session s-${hash(Date.now()).slice(0,6)} generated BEFORE Set Session · stamped on every clean event`,'Steps':'protocol steps executing — intended vs observed state tracked per step','Get Logs':d.ble?'indexed Get Logs → proactive gap recovered, every local index present':'indexed Get Logs → 0 gaps','Clear Session':d.ble?'Clear Session REFUSED — BLE lost: indexes incomplete / outbox not durable':'Clear Session accepted — indexes complete AND outbox durable'}; d.log=[...d.log,`${st}: ${lines[st]}`].slice(-8); if(st==='Clear Session'&&!d.ble) d.records=0; n.dev=d; });
+  devReset=()=>this.mutate(n=>{ n.dev={step:-1,ble:false,records:0,log:[]}; });
+  devBle=()=>this.mutate(n=>{ const d={...n.dev,ble:!n.dev.ble}; d.log=[...d.log,d.ble?'BLE link lost — session continues autonomously; proactive status/log gap accumulating':'BLE reconnected — gap recoverable via indexed Get Logs'].slice(-8); n.dev=d; });
+  togglePalette=()=>this.setState(s=>({palette:{open:!s.palette.open,q:'',idx:0}}));
+  openPalette=()=>this.setState({palette:{open:true,q:'',idx:0}});
+  closePalette=()=>this.setState(s=>({palette:{...s.palette,open:false}}));
+  onPaletteQ=e=>{ const q=e.target.value; this.setState(s=>({palette:{...s.palette,q,idx:0}})); };
+  onPaletteKey=e=>{ const items=this.paletteItems(); if(e.key==='ArrowDown'){e.preventDefault();this.setState(s=>({palette:{...s.palette,idx:Math.min(items.length-1,s.palette.idx+1)}}));} else if(e.key==='ArrowUp'){e.preventDefault();this.setState(s=>({palette:{...s.palette,idx:Math.max(0,s.palette.idx-1)}}));} else if(e.key==='Enter'){ const it=items[this.state.palette.idx]; if(it){ this.closePalette(); it.fn(); } } };
+  commands(){ const s=this.state; const out=[]; const add=(group,label,hint,fn)=>out.push({group,label,hint,fn});
+    s.services.forEach(v=>{ const live=v.status==='RUNNING'||v.status==='DRAINING'; add('inspect',`Inspect ${v.name}`,`:${v.port}`,()=>this.setState({selected:v.name})); if(v.status==='RUNNING') add('service',`Drain ${v.name}`,'Admin.Drain',()=>this.drain(v.name)); if(live) add('service',`Shutdown ${v.name}`,'Admin.Shutdown',()=>this.shutdown(v.name)); add('service',`${live?'Restart':'Launch'} ${v.name}`,`bin/${v.bin}`,()=>this.restart(v.name)); add('service',`Ping ${v.name}`,'Admin.Ping',()=>this.ping(v.name)); add('service',`${v.trace?'Disable':'Enable'} trace on ${v.name}`,'Admin.SetTrace',()=>this.toggleFlag(v.name,'trace')); add('service',`${v.debug?'Disable':'Enable'} debug on ${v.name}`,'Admin.SetDebug',()=>this.toggleFlag(v.name,'debug')); add('service',`Profile ${v.name} (CPU 10s)`,'Admin.GetProfile',()=>this.profile(v.name)); add('telemetry',`Reset telemetry ${v.name}`,'Network.Reset',()=>this.resetTele(v.name)); });
+    add('telemetry','Reset telemetry — global','Network.Reset("")',()=>this.resetTele(null));
+    add('platform','DrainAll','Network.DrainAll',this.drainAll); add('platform','ShutdownAll','kill switch',this.shutdownAll);
+    SUITES.forEach(t=>add('run',`Run ${t.name}`,`--only ${t.key}`,()=>{this.setTab('tests');this.runKeys([t.key]);}));
+    ['base','reliability','load'].forEach(p=>add('run',`Run profile ${p}`,`${SUITES.filter(t=>t.profile===p).length} suites`,()=>{this.setTab('tests');this.runKeys(SUITES.filter(t=>t.profile===p).map(t=>t.key));}));
+    add('run','Run all suites','./test/run_all.py',()=>{this.setTab('tests');this.runKeys(SUITES.map(t=>t.key));}); add('run','Stop run','SIGINT',this.stopRun);
+    [['envoy','Envoy edge','./infra/envoy/'],['postgres','Postgres','./infra/db/'],['clickhouse','ClickHouse','./infra/db/']].forEach(([k,l,d])=>add('infra',`${s.infra[k]?'Stop':'Start'} ${l}`,`${d}${s.infra[k]?'down':'up'}.sh`,()=>this.toggleInfra(k)));
+    add('sim',`${s.fleet.running?'Stop':'Start'} fleet`,`${s.fleet.edges} edges × ${s.fleet.rate}/s`,()=>{this.setTab('simulate');this.fleetToggle();}); add('sim','Reconnect storm','restart Health + Therapy',this.storm); add('sim','Walk fault matrix','15 interleavings',()=>{this.setTab('simulate');this.walk();});
+    add('sim','Trip Session breaker','stop bin/session',()=>this.shutdown('Session')); add('sim','Trip ClickHouse breaker','stop container',()=>{if(s.infra.clickhouse)this.toggleInfra('clickhouse');}); add('sim','Trip Network breaker','stop bin/network',()=>this.shutdown('Network'));
+    s.sessions.filter(x=>x.status!=='ejected').forEach(x=>add('session',`Eject ${x.client}`,'Session.EjectSession',()=>this.eject(x.client)));
+    ['monitor','tests','simulate'].forEach(v=>add('view',`Tab ${v}`,'',()=>this.setTab(v)));
+    Object.keys(PANELS).forEach(t=>PANELS[t].forEach(pid=>{ const hidden=s.wb[t].hidden.includes(pid); add('layout',`${hidden?'Show':'Hide'} ${PANEL_LABEL[pid]} panel`,t,()=>{this.setTab(t);this.togglePanel(t,pid);}); }));
+    add('layout','Reset layout','all tabs',this.resetLayout);
+    return out; }
+  paletteItems(){ const q=this.state.palette.q.trim().toLowerCase().split(/\s+/).filter(Boolean); return this.commands().filter(c=>q.every(t=>(c.group+' '+c.label+' '+c.hint).toLowerCase().includes(t))).slice(0,14); }
+  tabOf(pid){ return Object.keys(PANELS).find(t=>PANELS[t].includes(pid)); }
+  togglePanel(t,pid){ this.setState(s=>{ const cfg=s.wb[t]; const hidden=cfg.hidden.includes(pid)?cfg.hidden.filter(x=>x!==pid):[...cfg.hidden,pid]; return {wb:{...s.wb,[t]:{...cfg,hidden}}}; },()=>this.persist()); }
+  resetLayout=()=>{ const wb={}; Object.keys(PANELS).forEach(t=>{ wb[t]={order:[...PANELS[t]],hidden:[]}; }); this.setState({wb,split:null},()=>this.persist()); };
+  dragStart(pid){ return e=>{ try{ e.dataTransfer.setData('text/plain',pid); e.dataTransfer.effectAllowed='move'; }catch(x){} this.setState({drag:pid}); }; }
+  dragOver(pid){ return e=>{ e.preventDefault(); if(this.state.drag&&this.state.dragOver!==pid) this.setState({dragOver:pid}); }; }
+  drop(pid){ return e=>{ e.preventDefault(); const from=this.state.drag; if(!from||from===pid) { this.setState({drag:null,dragOver:null}); return; } const t=this.tabOf(pid); if(this.tabOf(from)!==t){ this.setState({drag:null,dragOver:null}); return; } this.setState(s=>{ const order=s.wb[t].order.filter(x=>x!==from); order.splice(order.indexOf(pid),0,from); return {wb:{...s.wb,[t]:{...s.wb[t],order}},drag:null,dragOver:null}; },()=>this.persist()); }; }
+  dragEnd=()=>this.setState({drag:null,dragOver:null});
+  splitDown=e=>{ e.preventDefault(); this._splitMove=ev=>{ const el=this.rootRef.current; if(!el) return; const r=el.getBoundingClientRect(); const pct=Math.max(25,Math.min(75,Math.round(100*(ev.clientY-r.top-44)/(r.height-44-28)))); this.setState({split:pct}); }; this._splitUp=()=>{ this.splitUp(); this.persist(); }; window.addEventListener('mousemove',this._splitMove); window.addEventListener('mouseup',this._splitUp); };
+  splitUp(){ if(this._splitMove){ window.removeEventListener('mousemove',this._splitMove); window.removeEventListener('mouseup',this._splitUp); this._splitMove=null; this._splitUp=null; } }
+  lastEvent(s,name){ return s.lifecycle.find(e=>e.service===name); }
+  rvTopology(s,ch,spin){ const now=s.now; const nodes=[],links=[],linkLabels=[]; const envoyUp=s.infra.envoy; const sessOk=!ch.session;
+    const rows=name=>s.tele.filter(r=>r.c===name); const rateOf=name=>rows(name).filter(r=>r.d==='in').reduce((a,r)=>a+(r.curRate||0),0); const ioOf=name=>rows(name).reduce((a,r)=>a+(r.biC||0)+(r.boC||0),0);
+    const edgeRows=s.tele.filter(r=>r.edge); const edgeRate=edgeRows.reduce((a,r)=>a+(r.curRate||0),0), edgeIo=edgeRows.reduce((a,r)=>a+(r.biC||0)+(r.boC||0),0), deniedN=s.tele.reduce((a,r)=>a+r.denied,0);
+    const sc=k=>s.sessions.filter(x=>x.status===k).length;
+    const pts=arr=>{ const a=arr&&arr.length>1?arr:[0,0]; const mx=Math.max(1e-9,...a); return a.map((v,i)=>`${(i*100/(a.length-1)).toFixed(1)},${(13-(v/mx)*12).toFixed(1)}`).join(' '); };
+    const st=(k,v,color)=>({k,v:String(v),color:color||C.fg});
+    const mk=o=>{ const c=o.s; const on=s.selected===o.id; const h=s.hist[o.id]||{}; nodes.push({...o,tf:`translate(${o.x},${o.y})`,click:()=>this.select(o.id),host:o.host||'',port:o.port||'',sub:o.sub||'',
+      pillBg:c+'24',pillBorder:c+'52',shadow:`0 8px 24px -14px #000, inset 0 1px 0 rgba(255,255,255,.025), inset 0 0 0 1px ${c}29, inset 0 0 30px -18px ${c}`,border:on?c+'99':C.line,outline:on?`1.5px solid ${c}b3`:'none',beat:o.live?'beat 1.6s ease-out infinite':'none',
+      hasSparks:!!o.sparks,hasFoot:!o.sparks,rpc:o.sparks?fmtRate(o.sparks.rpc):'',rpcPts:o.sparks?pts(h.rpc):'',io:o.sparks?fmtBps(o.sparks.io):'',ioPts:o.sparks?pts(h.io):'',foot:o.foot||'',footColor:o.footColor||C.fg2,foot2:o.foot2||'',foot2Color:o.foot2Color||C.fg3}); };
+    const W=194,Hc=108,Y1=6,YM=126,Y2=246,BUS=180;
+    const fleetN=s.fleet.running?s.fleet.edges:0; const fleetOk=envoyUp&&sessOk;
+    mk({id:'Edge fleet',x:6,y:YM,w:150,h:Hc,title:'Edge fleet',host:'bin/edge',sub:`${s.sessions.length} clients`,s:fleetOk?C.green:C.yel,pill:fleetOk?'LIVE':'DENY',live:fleetOk,
+      stats:[st('live',sc('live'),C.green),st('denied',sc('denied'),sc('denied')?C.yel:C.fg),st('ejected',sc('ejected'),sc('ejected')?C.red:C.fg)],
+      foot:'Session-tracked plane',foot2:fleetN?`+${fleetN} synthetic edges`:'fleet sim idle',foot2Color:fleetN?C.green:C.fg3});
+    mk({id:'Envoy',x:172,y:YM,w:156,h:Hc,title:'Envoy',port:':58000',sub:'admin :58009',s:fleetOk?C.green:C.red,pill:!envoyUp?'DOWN':sessOk?'ALLOW':'DENY ALL',live:envoyUp,
+      stats:[st('routes',edgeRows.length),st('denied',fmtInt(deniedN),fleetOk?C.fg:C.red),st('jwks',envoyUp?'300s':'—')],
+      sparks:{rpc:fleetOk?edgeRate:0,io:fleetOk?edgeIo:0}});
+    const POS={Authentication:[346,Y1],Session:[556,Y1],Protocol:[766,Y1],Health:[346,Y2],Therapy:[556,Y2]};
+    Object.keys(POS).forEach(name=>{ const v=this.svc(s,name); const [nx,y]=POS[name]; const col=TAG[v.status][1]; const live=v.status==='RUNNING'||v.status==='DRAINING'; const stale=ch.network;
+      mk({id:name,x:nx,y,w:W,h:Hc,title:name,port:`:${v.port}`,sub:v.aux||`pid ${v.pid}`,s:col,pill:v.status,live,
+        stats:[st('uptime',live?fmtUptime((now-v.startedAt)/1000):'—'),st('seen',live?(stale?'STALE':`${v.seen}s ago`):`fail ${v.fail}/3`,live?(stale?C.yel:C.fg):C.red),st('inflt',v.rpcActive)],
+        sparks:{rpc:live?rateOf(name):0,io:live?ioOf(name):0}}); });
+    const net=this.svc(s,'Network'); const netLive=net.status==='RUNNING'||net.status==='DRAINING'; const regN=s.services.filter(x=>!x.hub&&['RUNNING','DRAINING','DRAINED'].includes(x.status)).length;
+    mk({id:'Network',x:976,y:YM,w:W,h:Hc,title:'Network',port:':57000',sub:`hub · pid ${net.pid}`,s:TAG[net.status][1],pill:net.status,live:netLive,
+      stats:[st('registry',netLive?regN:'—'),st('snapshot',netLive?fmtInt(s.snapSeq):'STALE',netLive?C.fg:C.yel),st('logs',netLive?fmtInt(s.logSeq):`${s.pending.length} held`,netLive?C.fg:C.yel)],
+      sparks:{rpc:netLive?rateOf('Network'):0,io:netLive?ioOf('Network'):0}});
+    const pgErr=s.tele.filter(r=>{const v=this.svc(s,r.c);return v&&v.store==='postgres'&&r.d==='in'&&r.k==='U'}).reduce((a,r)=>a+r.err,0); const pg=s.infra.postgres;
+    mk({id:'Postgres',x:976,y:Y1,w:W,h:Hc,title:'Postgres',port:':55432',sub:'salus_records',s:pg?C.green:C.red,pill:pg?'UP':'DOWN',live:pg,
+      stats:[st('pool',pg?'libpqxx':'refused',pg?C.fg:C.red),st('writers',3),st('errors',fmtInt(pgErr),pgErr?C.yel:C.fg)],
+      foot:pg?'reachable · SalusRecords':'DOWN — ./infra/db/up.sh',footColor:pg?C.fg2:C.red,foot2:'← Auth · Session · Protocol'});
+    const rx=s.fleet.list.reduce((a,e)=>a+e.rx,0),cm=s.fleet.list.reduce((a,e)=>a+e.cm,0); const chUp=s.infra.clickhouse;
+    mk({id:'ClickHouse',x:766,y:Y2,w:W,h:Hc,title:'ClickHouse',port:':59000',sub:'salus_data',s:chUp?C.green:C.red,pill:chUp?'UP':'DOWN',live:chUp,
+      stats:[st('received',fmtInt(rx)),st('committed',fmtInt(cm)),st('held',fmtInt(rx-cm),rx>cm?C.yel:C.fg)],
+      foot:chUp?'reachable · http :59123':'DOWN — commits held',footColor:chUp?C.fg2:C.red,foot2:'← Health · Therapy ledgers'});
+    const lineStyle=(live,dotted,bad)=>bad?'fill:none;stroke:rgba(255,107,107,.55);stroke-width:1.2;stroke-dasharray:2 4':live?`fill:none;stroke:#3b4756;stroke-width:${dotted?1:1.5};stroke-dasharray:${dotted?'2 5':'6 6'};animation:flow ${dotted?'1.6s':'1s'} linear infinite`:'fill:none;stroke:#222a34;stroke-width:1.2;stroke-dasharray:2 4';
+    links.push({d:`M156 ${BUS} H172`,style:lineStyle(fleetOk,false,!fleetOk)}); linkLabels.push({x:81,y:YM+Hc+16,w:150,t:'Bearer JWT · h2c'});
+    links.push({d:`M328 ${BUS} H880`,style:lineStyle(fleetOk,false,!fleetOk)}); linkLabels.push({x:548,y:BUS+22,w:200,t:envoyUp?(sessOk?'jwt_authn → ext_authz':'ext_authz DENY · Session down'):'edge down — no route'});
+    links.push({d:`M880 ${BUS} H976`,style:lineStyle(netLive,true,!netLive)}); linkLabels.push({x:928,y:BUS-12,w:90,t:netLive?'telemetry':'bus down'});
+    Object.keys(POS).forEach(name=>{ const [nx,y]=POS[name]; const cx=nx+W/2; const v=this.svc(s,name); const up=v.status==='RUNNING'; const ok=envoyUp&&up&&(name==='Session'||sessOk); const bad=!up||!envoyUp||(name!=='Session'&&!sessOk); links.push({d:y===Y1?`M${cx} ${Y1+Hc} V${BUS}`:`M${cx} ${BUS} V${Y2}`,style:lineStyle(ok,false,bad)}); });
+    links.push({d:`M540 ${Y1+Hc/2} H976`,style:pg?'fill:none;stroke:#3b4756;stroke-width:1.2':lineStyle(false,false,true)});
+    links.push({d:`M540 ${Y2+Hc/2} H766`,style:chUp?'fill:none;stroke:#3b4756;stroke-width:1.2':lineStyle(false,false,true)});
+    return {nodes,links,linkLabels:linkLabels.map(l=>({t:l.t,w:l.w,lx:l.x-l.w/2,ly:l.y-11}))}; }
+  rvInspector(s,ch,spin){ const now=s.now; const id=s.selected; const act=(label,color,fn,title)=>({label,color,title:title||'',run:fn}); const sc=k=>s.sessions.filter(x=>x.status===k).length; const LCC={started:C.green,stopped:C.fg3,error:C.red,reconnected:C.cyan,draining:C.yel};
+    const evView=list=>list.map(e=>({ts:fmtHms(e.ts),color:LCC[e.type]||C.fg2,service:e.service,type:e.type,msg:e.msg}));
+    const logView=list=>list.map(l=>({ts:fmtHms(l.ts),level:l.level,color:LVL[l.level],msg:l.msg}));
+    const sessView=list=>list.map(x=>({client:x.client,edge:x.edge,heard:x.heard+'s',status:x.status,color:x.status==='live'?C.green:x.status==='denied'?C.yel:C.red,canEject:x.status!=='ejected',eject:()=>this.eject(x.client)}));
+    let o={hasSel:!!id,hint:id?'click × for platform overview':'click a node in the topology',title:'',sub:'',dot:C.fg3,blurb:'',facts:[],actions:[],hasFocus:false,toggleFocus:()=>{},focusLabel:'',focusBorder:'#222a34',focusBg:'transparent',focusColor:C.fg2,events:[],hasEvents:false,eventsMeta:'',sessions:[],hasSessions:false,sessionsMeta:'',logs:[],hasLogs:false,logsMeta:''};
+    const v=id?this.svc(s,id):null;
+    if(!id){ const live=s.services.filter(x=>x.status==='RUNNING').length; const infraUp=Object.values(s.infra).filter(Boolean).length; const cur=s.current?SUITES.find(t=>t.key===s.current):null;
+      o.title='Salus platform'; o.sub='localhost · levaux/salus@main'; o.dot=live===s.services.length&&infraUp===3&&!ch.session?C.green:C.yel; o.blurb='Private services register with Network and push telemetry; public clients are tracked by Session and governed at the Envoy edge. Select a node for its Admin surface.';
+      o.facts=[{k:'services',v:`${live}/${s.services.length} running${s.services.some(x=>x.status==='DRAINING'||x.status==='DRAINED')?' · draining':''}${s.services.some(x=>x.status==='EVICTED')?' · evicted':''}`,color:live===s.services.length?C.green:C.yel},{k:'heartbeat',v:ch.network?`Network down — registry stale ${fmtAgo((now-(s.staleSince||now))/1000)}`:'5 s active ping · 3-fail eviction · all fresh',color:ch.network?C.yel:C.fg},{k:'edge',v:!s.infra.envoy?'DOWN':ch.session?'DENY ALL (Session unreachable, fail-closed)':'allow · jwt_authn + ext_authz',color:!s.infra.envoy||ch.session?C.red:C.fg},{k:'sessions',v:`${sc('live')} live · ${sc('denied')} denied · ${sc('ejected')} ejected`,color:C.fg},{k:'infra',v:`Envoy ${s.infra.envoy?'✓':'⊘'} · Postgres ${s.infra.postgres?'✓':'⊘'} · ClickHouse ${s.infra.clickhouse?'✓':'⊘'}`,color:infraUp===3?C.fg:C.yel},{k:'telemetry',v:ch.network?'snapshot stale':`seq ${fmtInt(s.snapSeq)} · ${s.tele.length} rows · 1 Hz`,color:C.fg2},{k:'tests',v:cur?`${spin} ${cur.name} ${s.runs[s.current].progress}%`:(s.history.length?`last: ${s.history[0].name} ${s.history[0].state}`:'idle · 31 suites'),color:cur?C.fg:C.fg2},{k:'fleet',v:s.fleet.running?`${s.fleet.edges} synthetic edges streaming`:'idle',color:s.fleet.running?C.green:C.fg2}];
+      o.actions=[act('◐ DrainAll',C.yel,this.drainAll,'Network.DrainAll'),act('■ ShutdownAll',C.red,this.shutdownAll,'Network.ShutdownAll'),act('⟲ Reset telemetry',C.fg2,()=>this.resetTele(null),'Network.Reset("")'),act('⌘K commands',C.fg2,this.openPalette)];
+      o.events=evView(s.lifecycle.slice(0,6)); o.hasEvents=o.events.length>0; o.eventsMeta='latest 6';
+      const errs=s.logs.filter(l=>l.level==='error'||l.level==='fatal'||l.level==='warn').slice(-6).reverse(); o.logs=logView(errs); o.hasLogs=o.logs.length>0; o.logsMeta='warn+ · latest 6'; }
+    else if(v){ const live=v.status==='RUNNING'||v.status==='DRAINING'; const [tag,col]=TAG[v.status]; const rows=s.tele.filter(r=>r.c===v.name); const rate=rows.filter(r=>r.d==='in').reduce((a,r)=>a+(r.curRate||0),0); const errs=rows.reduce((a,r)=>a+r.err+r.denied,0);
+      o.title=v.name; o.sub=`:${v.port}${v.aux?' · '+v.aux:''} · bin/${v.bin}`; o.dot=col; o.blurb=v.role;
+      o.facts=[{k:'status',v:tag,color:col},{k:'uptime',v:live?fmtUptime((now-v.startedAt)/1000):'—',color:C.fg},{k:'pid',v:String(v.pid),color:C.fg},{k:'heartbeat',v:v.hub?'n/a — Network pings the others':(live?(ch.network?'stale — Network down':`seen ${fmtAgo(v.seen)} · fail ${v.fail}/3`):`fail ${v.fail}/3${v.status==='EVICTED'?' → evicted':''}`),color:v.fail?C.yel:C.fg},{k:'rpc',v:`${v.rpcActive} active · queue ${v.queue} · ${v.threads} threads`,color:C.fg},{k:'inbound',v:live?`${fmtRate(rate)} · ${rows.length} rows${errs?` · ${fmtInt(errs)} non-OK`:''}`:'—',color:errs?C.yel:C.fg},{k:'flags',v:`trace=${v.trace} debug=${v.debug}`,color:C.fg2},{k:'subject',v:'(unauthenticated) — direct registration',color:C.fg2}];
+      if(v.store) o.facts.push({k:'store',v:v.store==='postgres'?`Postgres :55432 ${s.infra.postgres?'✓':'⊘ down'}`:`ClickHouse :59000 ${s.infra.clickhouse?'✓':'⊘ down — commits held'}`,color:(v.store==='postgres'?s.infra.postgres:s.infra.clickhouse)?C.fg:C.red});
+      o.actions=[act('◎ Ping',C.fg2,()=>this.ping(id),'Admin.Ping'),v.status==='RUNNING'?act('◐ Drain',C.yel,()=>this.drain(id),'Admin.Drain'):null,live?act('■ Shutdown',C.red,()=>this.shutdown(id),'Admin.Shutdown'):act('▶ Launch',C.green,()=>this.restart(id),`bin/${v.bin}`),live?act('↻ Restart',C.fg,()=>this.restart(id),'SIGTERM → relaunch'):null,act(v.trace?'T trace off':'T trace on',C.cyan,()=>this.toggleFlag(id,'trace'),'Admin.SetTrace'),act(v.debug?'D debug off':'D debug on',C.blue,()=>this.toggleFlag(id,'debug'),'Admin.SetDebug'),act('Profile CPU 10s',C.fg2,()=>this.profile(id),'Admin.GetProfile'),act('⟲ Reset telemetry',C.fg2,()=>this.resetTele(id),'Network.Reset(component)')].filter(Boolean);
+      o.hasFocus=true; const on=s.focus===id; o.toggleFocus=()=>this.setFocus(id); o.focusLabel=on?'◉ Monitor filtered — clear':'○ filter Monitor to '+id; o.focusBorder=on?'#dde4ec':'#222a34'; o.focusBg=on?'#1a2028':'transparent'; o.focusColor=on?'#fff':C.fg2;
+      o.events=evView(s.lifecycle.filter(e=>e.service===id).slice(0,6)); o.hasEvents=o.events.length>0; o.eventsMeta=`${s.lifecycle.filter(e=>e.service===id).length} total`;
+      o.logs=logView(s.logs.filter(l=>l.service===id).slice(-8).reverse()); o.hasLogs=o.logs.length>0; o.logsMeta='latest 8';
+      if(id==='Session'){ o.sessions=sessView(s.sessions); o.hasSessions=true; o.sessionsMeta=`${sc('live')} live · ${sc('denied')} denied · ${sc('ejected')} ejected`; } }
+    else if(id==='Envoy'){ const up=s.infra.envoy, ok=!ch.session; o.title='Envoy edge'; o.sub=':58000 · admin :58009 · Docker'; o.dot=!up?C.red:ok?C.green:C.red; o.blurb='Two checks in order on every gated request: jwt_authn validates the RS256 token, then ext_authz asks Session whether the client is still live. Authenticate + PushNetworkStats stay un-gated.';
+      o.facts=[{k:'listener',v:up?'h2c :58000 · jwt_authn iss=salus-test':'DOWN — ./infra/envoy/up.sh',color:up?C.fg:C.red},{k:'ext_authz',v:ok?'Session :57021 · allow by live session':'authorizer unreachable → DENY (failure_mode_allow=false)',color:ok?C.fg:C.red},{k:'jwks',v:'remote_jwks Authentication :57011 · cache 300s',color:C.fg2},{k:'headers',v:'sub→x-user-id · jti→x-session-id · iat/exp→x-token-*',color:C.fg2},{k:'denied',v:`${fmtInt(s.tele.reduce((a,r)=>a+r.denied,0))} PERMISSION_DENIED since reset`,color:C.fg},{k:'gated routes',v:'ServerTest · StreamHealth · StreamTherapy · Protocol pull surface',color:C.fg2}];
+      o.actions=[act(up?'■ down.sh':'▶ up.sh',up?C.red:C.green,()=>this.toggleInfra('envoy')),act('GET /ready',C.fg2,()=>this.mutate(n=>this.log(n,'salus-gui',up?'info':'error','Envoy',`GET :58009/ready → ${up?'200 LIVE':'connection refused'}`))),act('GET /stats',C.fg2,()=>this.mutate(n=>this.log(n,'salus-gui','info','Envoy',`GET :58009/stats → http.ingress.rq_total=${fmtInt(rnd(120000,300000))} · ext_authz.denied=${s.tele.reduce((a,r)=>a+r.denied,0)}`)))];
+      o.sessions=sessView(s.sessions); o.hasSessions=true; o.sessionsMeta=`${sc('live')} live · ${sc('denied')} denied · ${sc('ejected')} ejected`; o.events=evView(s.lifecycle.filter(e=>e.service==='Envoy').slice(0,4)); o.hasEvents=o.events.length>0; o.eventsMeta='edge'; }
+    else if(id==='Postgres'||id==='ClickHouse'){ const pg=id==='Postgres'; const up=pg?s.infra.postgres:s.infra.clickhouse; const rx=s.fleet.list.reduce((a,e)=>a+e.rx,0),cm=s.fleet.list.reduce((a,e)=>a+e.cm,0);
+      o.title=id; o.sub=pg?':55432 · salus_records · postgres:16-alpine':':59000 · http :59123 · salus_data · 25.10-alpine'; o.dot=up?C.green:C.red; o.blurb=pg?'SalusRecords persistence (libpqxx pool, retry, statement registry). Credentials, sessions, protocol revisions and assignments live here; ejection survives a restart.':'SalusData time-series store. Health/Therapy commit a data row AND a per-sequence ingest-ledger entry before advancing the committed watermark — any replica reconstructs it on reconnect.';
+      o.facts=[{k:'state',v:up?'reachable':'DOWN',color:up?C.green:C.red},{k:'consumers',v:pg?'Authentication · Session · Protocol':'Health · Therapy',color:C.fg2},...(pg?[]:[{k:'watermarks',v:s.fleet.running?`received ${fmtInt(rx)} · committed ${fmtInt(cm)} · Δ ${fmtInt(rx-cm)}`:'no synthetic fleet streaming',color:rx>cm?C.yel:C.fg}]),{k:'stack',v:'infra/db · ./infra/db/up.sh',color:C.fg2}];
+      o.actions=[act(up?'■ stop container':'▶ up.sh',up?C.red:C.green,()=>this.toggleInfra(pg?'postgres':'clickhouse'))]; o.events=evView(s.lifecycle.filter(e=>e.service===id).slice(0,4)); o.hasEvents=o.events.length>0; o.eventsMeta='store'; }
+    else { const f=s.fleet; o.title='Edge fleet'; o.sub='bin/edge · public plane'; o.dot=s.infra.envoy&&!ch.session?C.green:C.yel; o.blurb='Each Edge authenticates through the edge, holds an RS256 JWT and drives gated RPCs. --register and --network-monitor default off: a public client is tracked by Session, not the Network registry.';
+      o.facts=[{k:'clients',v:`${s.sessions.length} authenticated · ${sc('live')} live`,color:C.fg},{k:'synthetic',v:f.running?`${f.edges} edges × ${f.rate}/s · ${f.list.filter(e=>e.st==='connected').length} connected`:'idle — Simulate › Edge fleet',color:f.running?C.green:C.fg2},{k:'posture',v:'--register=false --network-monitor=false',color:C.fg2},{k:'edge',v:!s.infra.envoy?'DOWN':ch.session?'DENY ALL':'allow',color:!s.infra.envoy||ch.session?C.red:C.fg}];
+      o.actions=[act(f.running?'■ stop fleet':'▶ start fleet',C.fg,this.fleetToggle),act('⟳ reconnect storm',C.fg2,this.storm),act('Simulate tab →',C.fg2,()=>this.setTab('simulate'))]; o.sessions=sessView(s.sessions); o.hasSessions=true; o.sessionsMeta=`${sc('live')} live · ${sc('denied')} denied · ${sc('ejected')} ejected`; }
+    return o; }
+  renderVals(){ const s=this.state; const P=this.props; const density=P.density??'dense'; const split=s.split||P.split||50; const ch=this.chaos(s); const spin=SPIN[s.tick%SPIN.length]; const now=s.now; const stop=fn=>e=>{e.stopPropagation();fn();};
+    const runningN=s.services.filter(v=>v.status==='RUNNING').length; const sc=k=>s.sessions.filter(x=>x.status===k).length;
+    const summary=[{glyph:runningN===s.services.length?'▶':'◐',color:runningN===s.services.length?C.green:C.yel,value:`${runningN}/${s.services.length}`,label:'services',title:'registered services running'},{glyph:'●',color:sc('denied')?C.yel:C.green,value:String(sc('live')),label:'sessions live',title:'public clients tracked by Session'},{glyph:!s.infra.envoy||ch.session?'⊘':'✓',color:!s.infra.envoy||ch.session?C.red:C.green,value:!s.infra.envoy?'down':ch.session?'deny':'allow',label:'edge',title:'Envoy jwt_authn + ext_authz'},{glyph:ch.network?'⊘':'⟳',color:ch.network?C.yel:C.green,value:ch.network?'stale':'5 s',label:'heartbeat',title:'Network active-ping heartbeat'},{glyph:s.current?spin:'✓',color:s.current?C.fg:(s.history[0]&&s.history[0].state==='failed'?C.red:C.fg3),value:s.current?SUITES.find(t=>t.key===s.current).name:(s.history[0]?s.history[0].name:'idle'),label:s.current?`${s.runs[s.current].progress}%`:'tests',title:'test harness'}];
+    const infraPills=[['envoy','Envoy',58000,'./infra/envoy/'],['postgres','Postgres',55432,'./infra/db/'],['clickhouse','ClickHouse',59000,'./infra/db/']].map(([k,name,port,dir])=>{const up=s.infra[k];return {name,port,glyph:up?'✓':'⊘',color:up?C.green:C.yel,title:up?`up — click to run ${dir}down.sh`:`down — click to run ${dir}up.sh`,toggle:()=>this.toggleInfra(k)}});
+    const tabs=[{k:'monitor',label:'Monitor',badge:`${runningN}/${s.services.length}`},{k:'tests',label:'Tests',badge:s.current?`${spin} ${s.sweep?s.sweep.index+'/'+s.sweep.total:''}`:`${SUITES.length}`},{k:'simulate',label:'Simulate',badge:s.fleet.running?`● ${s.fleet.edges} edges`:(s.faults.walking?`${spin} walking`:'')}].map(t=>{const on=s.tab===t.k;return {...t,go:()=>this.setTab(t.k),border:on?'#2c3641':'transparent',bg:on?'#1a2028':'transparent',color:on?'#fff':'#93a0ae',badgeColor:on?'#93a0ae':'#5b6673'}});
+    const cfg=s.wb[s.tab]; const chooser=PANELS[s.tab].map(pid=>{const on=!cfg.hidden.includes(pid);return {label:PANEL_LABEL[pid],title:on?'hide panel':'show panel',toggle:()=>this.togglePanel(s.tab,pid),border:on?'#2c3641':'transparent',bg:on?'#141920':'transparent',color:on?'#dde4ec':'#5b6673',deco:on?'none':'line-through'}});
+    const BASIS={registry:300,tele:560,logs:400,lifecycle:280,sessions:280,suites:520,live:400,artifacts:320,fleet:420,faults:400,breakers:380,sims:400};
+    const W=s.wbW||1200; const visible=cfg.order.filter(pid=>!cfg.hidden.includes(pid)); let rows=visible.length?1:0,acc=0; visible.forEach(pid=>{ const b=BASIS[pid]; if(acc>0&&acc+1+b>W){ rows++; acc=b; } else acc+=(acc?1:0)+b; }); const rowH=rows>1?`calc((100% - ${rows-1}px) / ${rows})`:'100%';
+    const p={}; Object.keys(PANELS).forEach(t=>PANELS[t].forEach(pid=>{ const c=s.wb[t]; p[pid]={order:c.order.indexOf(pid),height:rowH,display:t===s.tab&&!c.hidden.includes(pid)?'flex':'none',ring:s.dragOver===pid&&s.drag&&s.drag!==pid?'inset 0 0 0 1px #dde4ec':(s.drag===pid?'inset 0 0 0 1px #3d4652':'none'),start:this.dragStart(pid),over:this.dragOver(pid),drop:this.drop(pid),hide:()=>this.togglePanel(t,pid)}; }));
+    const registry=s.services.map(v=>{ const [tag,tagColor]=TAG[v.status]; const live=['RUNNING','DRAINING','STARTING'].includes(v.status); const down=['STOPPED','EVICTED'].includes(v.status); const stale=ch.network&&!v.hub; const up=(now-v.startedAt)/1000;
+      const meta=v.hub?`pid=${v.pid} :${v.port} ${live?fmtUptime(up):'—'} · registry ${s.services.filter(x=>!x.hub&&['RUNNING','DRAINING','DRAINED'].includes(x.status)).length} · not in its own registry`:`pid=${v.pid} :${v.port}${v.aux?' · '+v.aux:''} ${live?fmtUptime(up):'—'} · seen ${stale?fmtAgo((now-s.staleSince)/1000)+' stale':fmtAgo(v.seen)} · fail ${v.fail}${v.trace?' · trace':''}${v.debug?' · debug':''}`;
+      return {name:v.name,spin:v.status==='RUNNING'||v.status==='STARTING'||v.status==='DRAINING'?spin:' ',dotColor:tagColor,nameColor:down?C.red:C.fg,tag:v.hub&&v.status==='RUNNING'?'▶ HUB':tag,tagColor,meta,bg:s.selected===v.name?'rgba(255,255,255,.05)':'transparent',select:()=>this.select(v.name)}; });
+    const regMeta=ch.network?`Network down — registry stale ${fmtAgo((now-(s.staleSince||now))/1000)}`:`heartbeat 5s · ${s.services.filter(x=>!x.hub&&x.status==='RUNNING').length} live · click → Inspector`;
+    const LCC={started:C.green,stopped:C.fg3,error:C.red,reconnected:C.cyan,draining:C.yel};
+    const lifecycle=s.lifecycle.slice(0,60).map(e=>({ts:fmtHms(e.ts),color:LCC[e.type]||C.fg2,service:e.service,type:e.type,msg:e.msg}));
+    const sessions=s.sessions.map(x=>({client:x.client,edge:x.edge,since:fmtUptime((now-x.since)/1000),keyTimeout:x.keyTimeout+'s',heard:x.heard+'s',status:x.status,color:x.status==='live'?C.green:x.status==='denied'?C.yel:C.red,canEject:x.status!=='ejected',eject:()=>this.eject(x.client)}));
+    const sessMeta=`${sc('live')} live · ${sc('denied')} denied · ${sc('ejected')} ejected`;
+    const topo=this.rvTopology(s,ch,spin); const insp=this.rvInspector(s,ch,spin);
+    const topoHint=s.selected?`${s.selected} selected · Inspector →`:'click a chip → Inspector · chips carry status, heartbeat, in-flight, RPC/s and I/O trends';
+    const teleRows=s.tele.filter(r=>!s.focus||r.c===s.focus).map(r=>{ const v=this.svc(s,r.c); const up=v&&v.status==='RUNNING'; const errN=r.err+r.denied; const okPct=r.calls>0?Math.max(0,Math.min(100,100*(r.calls-errN)/Math.max(r.calls,errN))):100; return {c:r.c,m:r.m,k:r.k,d:r.d,calls:fmtInt(r.calls),bi:fmtBps(r.biC||0),bo:fmtBps(r.boC||0),p50:fmtUs(r.p50),p95:fmtUs(r.p95),p99:fmtUs(r.p99C||r.p99),p99Color:r.stalled?C.red:((r.p99C||0)>r.p99*1.2?C.yel:C.fg2),okPct:okPct.toFixed(1)+'%',errColor:errN?(r.denied?C.yel:C.red):'#1a2028',errText:r.denied?`${fmtInt(r.denied)} denied`:r.err?`${fmtInt(r.err)} err`:'ok',errTextColor:errN?(r.denied?C.yel:C.red):C.fg3,opacity:up?1:.4}; });
+    const teleMeta=ch.network?`Network unreachable — snapshot stale ${fmtAgo((now-(s.staleSince||now))/1000)}`:`seq ${fmtInt(s.snapSeq)} · ${new Set(s.tele.map(r=>r.c)).size} components · ${teleRows.length} rows · 1 Hz`;
+    const SHORT={trace:'trc',debug:'dbg',info:'inf',warn:'wrn',alarm:'alm',error:'err',fatal:'ftl',test:'tst'}; const levelChips=Object.keys(s.levels).map(k=>({name:k,short:SHORT[k],toggle:()=>this.toggleLevel(k),border:s.levels[k]?'#2c3641':'transparent',bg:s.levels[k]?'#141920':'transparent',color:s.levels[k]?LVL[k]:'#3d4652'}));
+    const logLines=s.logs.filter(l=>s.levels[l.level]&&(!s.focus||l.service===s.focus)).slice(-140).map(l=>({ts:fmtTs(l.ts),level:l.level,color:LVL[l.level],label:l.label,msg:l.msg,msgColor:l.level==='error'||l.level==='fatal'||l.level==='alarm'?C.fg:l.service==='salus-gui'?C.fg2:'#b6c0cb'}));
+    const logMeta=ch.network?`StreamLogs disconnected — ${s.pending.length} line(s) in producer rings, resume by seq`:`${logLines.length} shown · seq ${fmtInt(s.logSeq)}`;
+    const vis=this.visibleSuites(); const suites=vis.map(t=>{ const r=s.runs[t.key]||{state:'idle'}; const pr=this.needsOk(s,t.needs); const needs=[...t.needs].map(c=>({t:c,color:{E:s.infra.envoy,P:s.infra.postgres,C:s.infra.clickhouse}[c]?C.fg3:C.yel,title:{E:'Envoy edge :58000',P:'Postgres :55432',C:'ClickHouse :59000'}[c]})); const gl={idle:[' ',C.fg3],queued:['·',C.fg2],running:[spin,C.fg],passed:['✓',C.green],failed:['✗',C.red],skipped:['⊘',C.yel]}[r.state]||[' ',C.fg3];
+      const last=r.state==='running'?`${r.progress}% ${r.phase}`:r.state==='passed'?`✓ ${r.elapsed}s`:r.state==='failed'?`✗ ${r.elapsed}s`:r.state==='skipped'?r.reason:r.state==='queued'?'queued':(!pr.ok?`will skip — ${pr.what} down`:'');
+      return {name:t.name,key:t.key,desc:t.desc,profile:t.profile,profileColor:{base:C.fg3,reliability:C.cyan,load:C.mag}[t.profile],needs,check:s.sel.has(t.key)?'☑':'☐',glyph:gl[0],glyphColor:gl[1],last,lastColor:r.state==='skipped'||(r.state==='idle'&&!pr.ok)?C.yel:r.state==='failed'?C.red:r.state==='passed'?C.green:C.fg3,bg:s.current===t.key?'rgba(91,227,122,.07)':s.sel.has(t.key)?'rgba(255,255,255,.045)':'transparent',toggle:()=>this.toggleSel(t.key),run:stop(()=>this.runKeys([t.key]))}; });
+    const cnt=pf=>SUITES.filter(t=>pf==='all'||t.profile===pf).length; const profileChips=['all','base','reliability','load'].map(pf=>{const on=s.profileFilter===pf;return {label:`${pf} ${cnt(pf)}`,pick:()=>this.setState({profileFilter:pf}),border:on?'#2c3641':'transparent',bg:on?'#1a2028':'transparent',color:on?'#fff':'#93a0ae'}});
+    const sanitizeOpts=['release','-asan','-tsan','-ubsan'].map(o=>{const on=s.sanitize===o;return {label:o,pick:()=>this.setState({sanitize:o}),bg:on?'#1a2028':'#0f1318',color:on?'#fff':'#5b6673'}});
+    const flagChips=[['speed','--speed'],['plain','--plain'],['warnAsError','--warn-as-error']].map(([k,l])=>{const on=s.flags[k];return {label:l,toggle:()=>this.setState(st=>({flags:{...st.flags,[k]:!st.flags[k]}})),border:on?'#2c3641':'transparent',bg:on?'#141920':'transparent',color:on?'#dde4ec':'#5b6673'}});
+    const selKeys=SUITES.filter(t=>s.sel.has(t.key)).map(t=>t.key); const cmdFor=keys=>`./test/run_all.py${keys.length&&keys.length<SUITES.length?keys.map(k=>` --only ${k}`).join(''):''}${s.sanitize!=='release'?` --sanitize ${s.sanitize}`:''}${!s.flags.speed?' --no-speed':''}${s.flags.plain?' --plain':''}${s.flags.warnAsError?' --warn-as-error':''}`;
+    const cur=s.current?s.runs[s.current]:null; const showKey=s.current||s.lastRun; const R=showKey?s.runs[showKey]:null; const spec=showKey?SUITES.find(t=>t.key===showKey):null; const liveActive=!!R&&!!spec; const isRun=!!cur;
+    let lv={liveBanner:'',liveSpin:' ',liveProgress:0,liveBarOn:'',liveBarOff:'',livePhase:'',liveComps:[],liveDiag:[],liveResults:[],liveFooter:'',liveClose:'',liveCloseColor:C.fg3,masterBanner:'',masterColor:C.fg3,liveCmd:''};
+    if(liveActive){ const r=R; const prog=r.state==='running'?(r.progress||0):100; const filled=Math.round(20*prog/100); const pc=(r.results||[]).filter(x=>x.ok).length, fc=(r.results||[]).length-pc;
+      lv={liveCmd:cmdFor(s.sweep&&s.sweep.total>1?[]:[showKey]),liveBanner:`▶ ${spec.name} · ${spec.desc}${s.sweep?`   ${s.sweep.index}/${s.sweep.total} @ ${fmtUptime((now-s.sweep.started)/1000)}`:''}`,liveSpin:isRun?spin:' ',liveProgress:prog,liveBarOn:'█'.repeat(filled),liveBarOff:'░'.repeat(20-filled),livePhase:r.phase||r.state,
+        liveComps:(r.comps||[]).map(c=>({spin:c.status==='RUNNING'?spin:' ',name:c.name.padEnd(18,' '),tag:c.status==='RUNNING'?'▶ RUNNING':c.status==='EXITED'?'○ EXITED ':'◌ WAITING',tagColor:c.status==='RUNNING'?C.green:C.fg3,pid:c.pid,port:c.port,elapsed:`${(r.elapsed||0).toFixed(1)}s`})),
+        liveDiag:(r.diag||[]).slice(-6).map(t=>({text:t,color:C.red})),liveResults:(r.results||[]).map(x=>({glyph:x.ok?'✓':'✗',color:x.ok?C.green:C.red,name:x.name,detail:x.detail})),
+        liveFooter:r.state==='running'?'':(r.state==='skipped'?'':`${pc} passed, ${fc} failed`),liveClose:r.state==='passed'?`✓ ${spec.name} · ${spec.desc} · ${r.elapsed}s`:r.state==='failed'?`✗ ${spec.name} · ${spec.desc} · ${r.elapsed}s`:r.state==='skipped'?`⊘ SKIP  ${spec.name} — ${r.reason}`:'',liveCloseColor:r.state==='passed'?C.green:r.state==='failed'?C.red:C.yel,masterBanner:'',masterColor:C.fg3};
+      if(!isRun&&s.sweep&&s.sweep.done){ const hs=s.history.filter(h=>h.at>=s.sweep.started); const pp=hs.filter(h=>h.state==='passed').length, ff=hs.filter(h=>h.state==='failed').length, kk=hs.filter(h=>h.state==='skipped').length; lv.masterBanner=`${ff?'✗':'✓'} Salus — integration test suite · ${pp} of ${pp+ff} passed${kk?` · ${kk} skipped`:''} · ${fmtUptime(hs.reduce((a,h)=>a+h.elapsed,0))}`; lv.masterColor=ff?C.red:C.green; } }
+    const artifacts=s.artifacts.map(a=>({path:a.path,kind:a.kind,at:fmtHms(a.at),copy:()=>{try{navigator.clipboard.writeText(a.path);}catch(e){}}}));
+    const history=s.history.map(h=>({glyph:h.state==='passed'?'✓':h.state==='failed'?'✗':'⊘',color:h.state==='passed'?C.green:h.state==='failed'?C.red:C.yel,name:h.name,note:h.note||'',elapsed:h.elapsed?`${h.elapsed}s`:'—',at:fmtHms(h.at),sanitize:h.sanitize}));
+    const f=s.fleet; const fl=f.list; const conn=fl.filter(e=>e.st==='connected').length; const rx=fl.reduce((a,e)=>a+e.rx,0), cm=fl.reduce((a,e)=>a+e.cm,0); const maxRx=Math.max(1,...fl.map(e=>e.rx));
+    const fleetEdgesView=(f.running?fl:Array.from({length:f.edges},(_,i)=>({i,rx:0,cm:0,st:'idle'}))).map(e=>({pct:f.running?`${Math.max(6,Math.round(100*e.cm/maxRx))}%`:'0%',color:e.st==='connected'?(e.rx>e.cm?C.yel:C.green):e.st==='reconnecting'?C.cyan:e.st==='shed'?C.red:'#1a2028',title:`edge ${e.i} · ${e.st} · received ${e.rx} · committed ${e.cm}${e.epoch>1?' · epoch '+e.epoch:''}`}));
+    const chip=(on,col)=>({border:on?'#2c3641':'transparent',bg:on?'#1a2028':'transparent',color:on?(col||'#dde4ec'):'#5b6673'}); const pH=chip(f.health), pT=chip(f.therapy);
+    const fleetNote=f.running?(ch.clickhouse?'ClickHouse down: received advances, committed holds — edges keep unacknowledged events and will replay them (yellow = Δ held)':(fl.some(e=>e.st==='reconnecting')?'reconnecting — each edge resumes at its OWN committed watermark reconstructed from the ledger (cyan)':(f.edges>f.ceiling?`${f.edges-f.ceiling} edges over --max-streams → shed with RESOURCE_EXHAUSTED + retry-after (red)`:'steady — every event committed, received == committed'))):`idle · ${f.edges} edges × ${f.rate}/s per plane when started`;
+    const faultBounds=BOUNDS.map(b=>b.replace('stream_ack_','ack\n').replace('outbox_append','outbox\nappend').replace('claim_write','claim\nwrite'));
+    const faultRows=KINDS.map(kd=>({kind:kd,cells:BOUNDS.map(b=>{const key=kd+'@'+b;const c=s.faults.cells[key]||{state:'idle'};return {glyph:{idle:'·',queued:'·',running:spin,pass:'✓',fail:'✗'}[c.state],color:{idle:'#3d4652',queued:C.fg2,running:C.fg,pass:C.green,fail:C.red}[c.state],bg:c.state==='running'?'#1a2028':'#141920',title:`${key}${c.seed!=null?' · seed '+c.seed:''} — click to fire this interleaving`,fire:()=>this.fireFault(key),seed:c.state==='fail'?String(c.seed):''};})}));
+    const o=s.faults.oracle; const oracleText=o?`ReconciliationOracle(reference="expected") · ${o.last} · expected ${o.expected} · sink rows ${o.sink} · outbox ${o.outbox} · gap ${o.gap} · dup ${o.dup} · orphan ${o.orphan} — ${o.ok?'converged ✓':`FAIL ✗ · replay: ./test/DeliveryProbe/run_test.py --seed ${o.seed}`}`:'ReconciliationOracle · no interleaving walked yet — at every boundary, once converged: exactly one sink row per event and an empty outbox';
+    const fDone=Object.values(s.faults.cells).filter(c=>c.state==='pass'||c.state==='fail').length; const faultProgress=s.faults.walking||s.faults.cur?`${spin} ${fDone}/15`:(fDone?`${fDone}/15 walked`:'');
+    const depthOpts=[1,2].map(d=>({label:String(d),pick:()=>this.faultSet('depth',d),bg:s.faults.depth===d?'#1a2028':'#0f1318',color:s.faults.depth===d?'#fff':'#5b6673'}));
+    const sumDenied=s.tele.reduce((a,r)=>a+r.denied,0);
+    const brk=(on,name,sub,effect,observed,toggle)=>({name,sub,effect,observed,toggle,gated:'not gated',glyph:on?'⊘':'●',btnLabel:on?'restore':'trip',btnBorder:on?'rgba(255,107,107,.5)':'#2c3641',btnBg:on?'rgba(255,107,107,.1)':'#141920',btnColor:on?C.red:C.fg2,border:on?'rgba(255,107,107,.35)':'#222a34',bg:on?'rgba(255,107,107,.04)':'transparent',obsColor:on?C.yel:C.fg3});
+    const breakers=[brk(ch.session,'Session','stop bin/session :57020 · :57021','The edge denies everything. ext_authz is failure_mode_allow:false — a dead authorizer fails CLOSED. Correct for a clinical system, but Session is a hard availability dependency of the whole public plane.',ch.session?`observed · edge → DENY ALL · ${sc('denied')} sessions denied · ${fmtInt(sumDenied)} PERMISSION_DENIED`:'observed · ext_authz allow · JWT valid + session live',()=>ch.session?this.restart('Session'):this.shutdown('Session')),
+      brk(ch.clickhouse,'ClickHouse','stop salus-clickhouse :59000','received and committed diverge: committed advances only once the data row AND the ledger entry are durable, so the Edge keeps its unacknowledged events and replays them on recovery.',ch.clickhouse?`observed · received ${fmtInt(rx)} / committed ${fmtInt(cm)} — Δ ${fmtInt(rx-cm)} held${f.running?'':' (start the fleet to watch the divergence)'}`:'observed · received == committed',()=>this.toggleInfra('clickhouse')),
+      brk(ch.network,'Network','stop bin/network :57000','Private services keep serving. Registration and telemetry push retry with backoff (1s → 30s); nothing on a request path consults Network. Telemetry loss is not a service outage.',ch.network?`observed · registry stale ${fmtAgo((now-(s.staleSince||now))/1000)} · publisher rings buffering (60 × 1 s) · StreamLogs holding ${s.pending.length} line(s)`:'observed · heartbeat 5 s · snapshot 1 Hz · logs live',()=>ch.network?this.restart('Network'):this.shutdown('Network'))];
+    const h=s.hsim; const metricChips=METRICS.map(m=>({label:m,pick:()=>this.hsSet('metric',m),...chip(h.metric===m)}));
+    const hsIdentical=h.identical===true?'byte-identical on re-run ✓':h.identical===false?'DIFFERS — nondeterminism ✗':(h.digest?'first run at these parameters — generate again to prove identity':'—');
+    const d=s.dev; const devSteps=DEVSTEPS.map((st,i)=>({label:st,border:i===d.step?'#dde4ec':i<d.step?'#2c3641':'transparent',bg:i===d.step?'#1a2028':'transparent',color:i===d.step?'#fff':i<d.step?C.green:'#5b6673'}));
+    const snapText=ch.network?`Network :57000 unreachable — StreamSuiteSnapshot + StreamLogs disconnected · resuming by seq on reconnect`:`StreamSuiteSnapshot 1 Hz · seq ${fmtInt(s.snapSeq)} · 0 dropped · StreamLogs seq ${fmtInt(s.logSeq)} · heartbeat 5 s`;
+    return {density,topFr:`minmax(150px,${split}fr)`,botFr:`minmax(200px,${100-split}fr)`,rootRef:this.rootRef,clock:fmtClock(new Date(now)),summary,infraPills,openPalette:this.openPalette,shutdownAll:this.shutdownAll,
+      ...topo,topoHint,insp,clearSelect:this.clearSelect,splitDown:this.splitDown,
+      tabs,chooser,resetLayout:this.resetLayout,p,dragEnd:this.dragEnd,wbRef:this.wbRef,
+      registry,regMeta,regMetaColor:ch.network?C.yel:C.fg3,lifecycle,lcSeq:s.lcSeq,sessions,sessMeta,
+      teleRows,teleMeta,teleMetaColor:ch.network?C.yel:C.fg3,hasFocus:!!s.focus,focusName:s.focus||'',clearFocus:this.clearFocus,resetFocused:()=>this.resetTele(s.focus),resetLabel:s.focus||'all',
+      levelChips,logLines,logMeta,logMetaColor:ch.network?C.yel:C.fg3,logRef:this.logRef,togglePause:this.togglePause,pauseLabel:s.logPaused?'▶ follow':'⏸ pause',
+      suites,profileChips,sanitizeOpts,flagChips,runSelected:this.runSelected,runAll:this.runAll,stopRun:this.stopRun,isRunning:!!s.current,selCountLabel:selKeys.length?`(${selKeys.length})`:'',visCountLabel:`(${vis.length})`,
+      sweepMeta:s.current?cmdFor(selKeys.length?selKeys:[]):(s.sweep&&s.sweep.done?`last sweep ${s.sweep.total} suite(s)`:''),cmdPreview:cmdFor(selKeys),liveIdle:!liveActive,liveActive,...lv,liveRef:this.liveRef,
+      artifacts,noArtifacts:s.artifacts.length===0,artMeta:`${s.artifacts.length} files`,history,histMeta:`${s.history.length} run(s)`,
+      fleetState:f.running?`● streaming · ${conn} connected`:'○ idle',fleetStateColor:f.running?C.green:C.fg3,fleetEdges:f.edges,fleetRate:f.rate,fleetJitter:f.jitter,fleetCeiling:f.ceiling,onEdges:e=>this.fleetSet('edges',+e.target.value),onRate:e=>this.fleetSet('rate',+e.target.value),onJitter:e=>this.fleetSet('jitter',+e.target.value),onCeiling:e=>this.fleetSet('ceiling',+e.target.value),
+      fleetToggle:this.fleetToggle,fleetBtnLabel:f.running?'■ stop fleet':'▶ start fleet',fleetBtnBorder:f.running?'rgba(255,107,107,.5)':'#dde4ec',fleetBtnBg:f.running?'rgba(255,107,107,.1)':'#dde4ec',fleetBtnColor:f.running?C.red:'#0a0d11',storm:this.storm,
+      toggleHealthPlane:()=>this.fleetSet('health',!f.health),toggleTherapyPlane:()=>this.fleetSet('therapy',!f.therapy),planeHBorder:pH.border,planeHBg:pH.bg,planeHColor:pH.color,planeTBorder:pT.border,planeTBg:pT.bg,planeTColor:pT.color,
+      fleetActive:f.running?`${conn} / ${f.ceiling}`:`0 / ${f.ceiling}`,fleetRx:fmtInt(rx),fleetCm:fmtInt(cm),fleetDelta:fmtInt(rx-cm),fleetDeltaColor:rx-cm>0?C.yel:C.fg,fleetShed:fmtInt(f.shed),fleetShedColor:f.shed?C.red:C.fg,fleetEdgesView,fleetNote,
+      faultBounds,faultRows,faultProgress,walk:this.walk,faultSeed:String(s.faults.seed),onFaultSeed:e=>this.faultSet('seed',e.target.value.replace(/\D/g,'')||'0'),depthOpts,oracleText,oracleColor:o?(o.ok?C.fg2:C.red):C.fg3,
+      breakers,
+      hsSeed:String(h.seed),onHsSeed:e=>this.hsSet('seed',e.target.value.replace(/\D/g,'')||'0'),hsScale:h.scale,onHsScale:e=>this.hsSet('scale',+e.target.value),metricChips,hsGen:this.hsGen,hsDigest:h.digest?h.digest.slice(0,24)+'…':'—',hsEvents:h.digest?`${fmtInt(h.events)} events · window 24h`:'no run yet',hsIdentical,hsIdenticalColor:h.identical===true?C.green:h.identical===false?C.red:C.fg3,
+      devSteps,devNext:this.devNext,devNextLabel:d.step<0?'▶ advertise':d.step>=DEVSTEPS.length-1?'✓ session closed':`▶ ${DEVSTEPS[d.step+1]}`,devBle:this.devBle,devBleLabel:d.ble?'⟲ BLE reconnect':'⚡ BLE loss',devBleBtnBorder:d.ble?'rgba(245,197,66,.5)':'#222a34',devBleBtnColor:d.ble?C.yel:C.fg2,devBleState:d.ble?'⚠ BLE lost — autonomous':(d.step>=0?'● linked':'○ not advertising'),devBleColor:d.ble?C.yel:d.step>=0?C.green:C.fg3,devReset:this.devReset,devRecords:fmtInt(d.records),devPct:`${Math.round(100*d.records/3600)}%`,devPctColor:d.records>=3600?C.red:C.green,devLog:d.log,
+      snapGlyph:ch.network?'⊘':'⟳',snapColor:ch.network?C.yel:C.green,snapText,footRight:`${density} · insights ${split}% · ⌘K`,
+      paletteOpen:s.palette.open,paletteQ:s.palette.q,onPaletteQ:this.onPaletteQ,onPaletteKey:this.onPaletteKey,paletteRef:this.paletteRef,closePalette:this.closePalette,stopProp:this.stopProp,paletteCount:`${this.paletteItems().length} / ${this.commands().length}`,
+      paletteItems:this.paletteItems().map((c,i)=>({group:c.group,label:c.label,hint:c.hint,groupColor:{inspect:C.fg,service:C.cyan,telemetry:C.fg2,platform:C.red,run:C.green,infra:C.yel,sim:C.mag,session:C.blue,view:C.fg3,layout:C.fg3}[c.group]||C.fg2,bg:i===s.palette.idx?'#1a2028':'transparent',edge:i===s.palette.idx?'#dde4ec':'transparent',run:()=>{this.closePalette();c.fn();},hover:()=>this.setState(st=>({palette:{...st.palette,idx:i}}))})),
+      confirmOpen:!!s.confirm,confirmTitle:s.confirm?s.confirm.title:'',confirmBody:s.confirm?s.confirm.body:'',confirmOkLabel:s.confirm?(s.confirm.okLabel||'confirm'):'',confirmOk:this.confirmOk,closeConfirm:this.closeConfirm,confirmBorder:s.confirm&&s.confirm.danger?'rgba(255,107,107,.5)':'#2c3641',confirmBtnBorder:s.confirm&&s.confirm.danger?'#ff6b6b':'#dde4ec',confirmBtnBg:s.confirm&&s.confirm.danger?'#ff6b6b':'#dde4ec',confirmBtnColor:'#0a0d11'}; }
+}
+</script>
+</body>
+</html>

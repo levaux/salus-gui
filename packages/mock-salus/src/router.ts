@@ -63,16 +63,38 @@ export interface MockRouterOptions {
   fleet: MockFleet;
   /** Advances on each metrics read so a live panel shows movement. */
   tick?: () => number;
+  /**
+   * The service this router *is*, when it fronts a dedicated listener.
+   *
+   * This is the fidelity that matters: on a real fleet, `Admin` is auto-
+   * registered on every Component and each one answers **only for itself** —
+   * you reach a specific service by dialling its address, not by asking one
+   * service about another. The bridge works that way (it resolves
+   * `salus-admin-target` to an address and dials it), and it *strips* the
+   * header before forwarding, because upstream the header means nothing.
+   *
+   * So a bound router ignores the header entirely. The header path below
+   * survives only for the single-listener mode the unit tests use, where there
+   * is no port to distinguish services.
+   */
+  boundService?: string;
 }
 
 export class MockRouter {
   readonly fleet: MockFleet;
+  readonly boundService: string | undefined;
   private tickCount = 0;
   private readonly tickFn: () => number;
 
   constructor(opts: MockRouterOptions) {
     this.fleet = opts.fleet;
     this.tickFn = opts.tick ?? ((): number => this.tickCount++);
+    this.boundService = opts.boundService;
+  }
+
+  /** Which service an Admin call answers for. */
+  private target(ctx: Ctx): string {
+    return this.boundService ?? adminTarget(ctx);
   }
 
   // --- Salus.Admin.Admin ---------------------------------------------------
@@ -89,7 +111,7 @@ export class MockRouter {
     listenAddress: string;
     listenPort: number;
   } {
-    const name = adminTarget(ctx);
+    const name = this.target(ctx);
     const svc = this.fleet.getService(name);
     if (!svc) {
       // A target that does not exist is NOT_FOUND, not a fabricated healthy
@@ -114,7 +136,7 @@ export class MockRouter {
     rpcActive: number;
     queueDepth: number;
   } {
-    const name = adminTarget(ctx);
+    const name = this.target(ctx);
     if (!this.fleet.getService(name)) {
       throw new ConnectError(`no such service: ${name}`, Code.NotFound);
     }
@@ -122,7 +144,7 @@ export class MockRouter {
   }
 
   drain(ctx: Ctx): { accepted: boolean; inFlightRpcs: number; detail: string } {
-    const name = adminTarget(ctx);
+    const name = this.target(ctx);
     const ok = this.fleet.drain(name);
     if (!ok) throw new ConnectError(`no such service: ${name}`, Code.NotFound);
     // `in_flight_rpcs` is what the service still had to finish when it accepted
@@ -137,7 +159,7 @@ export class MockRouter {
 
   /** One service's own log ring, resumed from `salus-log-since-seq`. */
   adminLogs(ctx: Ctx, header: string): MockLogLine[] {
-    const name = adminTarget(ctx);
+    const name = this.target(ctx);
     if (!this.fleet.getService(name)) {
       throw new ConnectError(`no such service: ${name}`, Code.NotFound);
     }

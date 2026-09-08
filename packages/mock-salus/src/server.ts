@@ -14,7 +14,7 @@
  * dispatches on the *service* rather than on which port a call arrived at.
  */
 import { createServer } from 'node:http2';
-import type { Http2Server } from 'node:http2';
+import type { Http2Server, ServerHttp2Session } from 'node:http2';
 
 import { connectNodeAdapter } from '@connectrpc/connect-node';
 import type { ConnectRouter, HandlerContext } from '@connectrpc/connect';
@@ -22,6 +22,7 @@ import type { ConnectRouter, HandlerContext } from '@connectrpc/connect';
 import { Admin } from '@salus-gui/proto/gen/Admin_pb.js';
 import { Network } from '@salus-gui/proto/gen/Network_pb.js';
 import { Session } from '@salus-gui/proto/gen/Session_pb.js';
+import { CATALOG_PORT_BASE, SERVICE_CATALOG } from '@salus-gui/proto/services';
 
 import { MockFleet } from './fleet.js';
 import { MockRouter, type Ctx } from './router.js';
@@ -123,44 +124,116 @@ export function buildRoutes(mock: MockRouter, frameMs: number) {
 }
 
 export interface RunningMock {
+  /** The base port — the one a site's `portBase` should name. */
   readonly port: number;
+  /** Every port bound, one per distinct rebased catalog port. */
+  readonly ports: number[];
   readonly fleet: MockFleet;
   close(): Promise<void>;
 }
 
+/**
+ * Start the hub.
+ *
+ * **One listener per rebased catalog port, all sharing one handler.** The
+ * bridge rebases each service independently (`portBase + (catalogPort -
+ * 57000)`), so Session arrives at base+20 and Therapy at base+40. A single
+ * listener would answer only the service whose offset is zero, and every other
+ * panel would see ECONNREFUSED — which is exactly what happened the first time
+ * this was wired up. Binding the whole rebased set keeps the mock a drop-in
+ * substitute for a fleet of separate processes, which is the point of it.
+ *
+ * `port: 0` binds one OS-chosen port and serves everything there, for tests
+ * that talk to it directly rather than through a rebasing bridge.
+ */
 export function startMockServer(opts: MockServerOptions = {}): Promise<RunningMock> {
-  const port = opts.port ?? MOCK_HUB_PORT;
+  const basePort = opts.port ?? MOCK_HUB_PORT;
   const frameMs = opts.frameMs ?? 250;
   const fleetOpts = opts.seed !== undefined ? { seed: opts.seed } : {};
   const fleet = new MockFleet(fleetOpts);
-  const mock = new MockRouter({ fleet });
 
-  const server: Http2Server = createServer(
-    connectNodeAdapter({ routes: buildRoutes(mock, frameMs) }),
-  );
+  /**
+   * One listener per service, each answering **as** that service.
+   *
+   * Dynamic-target entries (Admin, EdgeApplication) claim no listener: they are
+   * always reached by an explicit address that rebases onto a real service's
+   * port, and EdgeApplication's 58070 convention would otherwise bind a stray
+   * port inside the platform's own band.
+   *
+   * The service name attached here is what makes Admin faithful. On a real
+   * fleet every Component serves Admin for *itself*, and the bridge reaches a
+   * specific one by dialling its address — stripping the routing header on the
+   * way, because upstream it means nothing. A mock that answered from the
+   * header would report the wrong process for every per-service drawer.
+   */
+  const bindings: { port: number; service: string | undefined }[] =
+    basePort === 0
+      ? [{ port: 0, service: undefined }]
+      : [
+          ...new Map(
+            SERVICE_CATALOG.filter((e) => e.dynamicTarget !== true).map((e) => [
+              basePort + (e.port - CATALOG_PORT_BASE),
+              e.label,
+            ]),
+          ),
+        ].map(([port, service]) => ({ port, service }));
 
-  return new Promise((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(port, () => {
-      server.off('error', reject);
-      // Report the port actually bound, not the one requested: `port: 0` asks
-      // the OS to choose, and returning the 0 back would send every caller to
-      // an unroutable address.
-      const address = server.address();
-      const boundPort = typeof address === 'object' && address !== null ? address.port : port;
-      resolve({
-        port: boundPort,
-        fleet,
-        close: () =>
-          new Promise<void>((done) => {
-            server.close(() => done());
-            // Sessions that are merely idle keep `close` pending, which would
-            // hang a test's teardown; drop them explicitly. Guarded because
-            // the method is newer than this package's Node floor.
-            const withClose = server as Http2Server & { closeAllConnections?: () => void };
-            withClose.closeAllConnections?.();
-          }),
+  // Track live sessions across every listener so close() can forcibly drop
+  // them. http2's close() only stops accepting new connections and waits for
+  // existing sessions to end — one long-lived forwarded stream would keep a
+  // session open forever, hanging teardown AND leaving the subscribed client
+  // with no disconnect to recover from. Destroying sessions is what makes a
+  // restart a real drop that a StreamController reconnects through.
+  const sessions = new Set<ServerHttp2Session>();
+  const servers: Http2Server[] = [];
+
+  return (async (): Promise<RunningMock> => {
+    const bound: number[] = [];
+    for (const { port: listenPort, service } of bindings) {
+      // One router per listener, all over the SAME fleet, so state an operator
+      // changes through one service (an ejection, a drain) is visible through
+      // every other.
+      const routerOpts = service === undefined ? { fleet } : { fleet, boundService: service };
+      const handler = connectNodeAdapter({
+        routes: buildRoutes(new MockRouter(routerOpts), frameMs),
       });
-    });
-  });
+      const server: Http2Server = createServer(
+        { settings: { maxConcurrentStreams: 256 } },
+        handler,
+      );
+      server.on('session', (session) => {
+        sessions.add(session);
+        session.on('close', () => sessions.delete(session));
+      });
+      await new Promise<void>((resolve, reject) => {
+        server.once('error', reject);
+        server.listen(listenPort, () => {
+          server.off('error', reject);
+          resolve();
+        });
+      });
+      const address = server.address();
+      // Report the port actually bound: `port: 0` asks the OS to choose, and
+      // handing the 0 back would send every caller to an unroutable address.
+      bound.push(typeof address === 'object' && address !== null ? address.port : listenPort);
+      servers.push(server);
+    }
+
+    return {
+      port: bound[0]!,
+      ports: bound,
+      fleet,
+      close: () =>
+        new Promise<void>((resolve) => {
+          for (const session of sessions) session.destroy();
+          sessions.clear();
+          let remaining = servers.length;
+          for (const server of servers) {
+            server.close(() => {
+              if (--remaining === 0) resolve();
+            });
+          }
+        }),
+    };
+  })();
 }

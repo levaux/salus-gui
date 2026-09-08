@@ -42,6 +42,31 @@ importers:
         specifier: ^8.18.1
         version: 8.70.0(eslint@9.39.5)(typescript@5.9.3)
 
+  apps/bridge:
+    dependencies:
+      '@bufbuild/protobuf':
+        specifier: ^2.2.3
+        version: 2.14.1
+      '@connectrpc/connect':
+        specifier: ^2.0.0
+        version: 2.2.0(@bufbuild/protobuf@2.14.1)
+      '@connectrpc/connect-node':
+        specifier: ^2.0.0
+        version: 2.2.0(@bufbuild/protobuf@2.14.1)(@connectrpc/connect@2.2.0(@bufbuild/protobuf@2.14.1))
+      '@salus-gui/proto':
+        specifier: workspace:*
+        version: link:../../packages/proto
+    devDependencies:
+      '@salus-gui/mock-salus':
+        specifier: workspace:*
+        version: link:../../packages/mock-salus
+      tsx:
+        specifier: ^4.19.2
+        version: 4.23.13
+      vitest:
+        specifier: ^3.0.2
+        version: 3.2.7(@types/node@22.20.1)(tsx@4.23.13)
+
   packages/mock-salus:
     dependencies:
       '@bufbuild/protobuf':

@@ -1,0 +1,24 @@
+{
+  "name": "@salus-gui/bridge",
+  "version": "0.1.5",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "tsc -b",
+    "start": "node dist/main.js",
+    "cert": "./scripts/gen-cert.sh",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "^2.2.3",
+    "@connectrpc/connect": "^2.0.0",
+    "@connectrpc/connect-node": "^2.0.0",
+    "@salus-gui/proto": "workspace:*"
+  },
+  "devDependencies": {
+    "@salus-gui/mock-salus": "workspace:*",
+    "tsx": "^4.19.2",
+    "vitest": "^3.0.2"
+  }
+}

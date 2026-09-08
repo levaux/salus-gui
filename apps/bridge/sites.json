@@ -1,0 +1,21 @@
+[
+  {
+    "id": "dev-mock",
+    "name": "Mock (offline)",
+    "env": "mock",
+    "readOnly": false,
+    "services": {
+      "host": "127.0.0.1",
+      "portBase": 56800
+    }
+  },
+  {
+    "id": "dev-local",
+    "name": "Local fleet",
+    "env": "dev",
+    "readOnly": false,
+    "services": {
+      "host": "127.0.0.1"
+    }
+  }
+]

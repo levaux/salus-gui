@@ -102,6 +102,33 @@ describe('over the wire', () => {
     expect(withClosed.sessions.find((s) => s.jti === victim.jti)?.revoked).toBe(true);
   });
 
+  it('a bound listener answers AS its service, ignoring the header', async () => {
+    // Fidelity that matters: on a real fleet each Component serves Admin for
+    // itself, and the bridge reaches a specific one by DIALLING ITS ADDRESS —
+    // stripping the routing header on the way, because upstream it means
+    // nothing. A mock answering from the header would report the wrong process
+    // for every per-service drawer, and only against a real fleet would anyone
+    // notice.
+    const multi = await startMockServer({ port: 0, seed: 'bound', frameMs: 0 });
+    await multi.close();
+
+    // Bind the real rebased set and dial Session's own port with a header
+    // naming a different service; the port must win.
+    const fleet = await startMockServer({ seed: 'bound', frameMs: 0 });
+    try {
+      const sessionPort = fleet.ports[2]!; // 57020 → base+20
+      const client = createClient(
+        Admin,
+        createGrpcTransport({ baseUrl: `http://127.0.0.1:${sessionPort}` }),
+      );
+      const status = await client.getStatus({}, { headers: { [ADMIN_TARGET_HEADER]: 'Therapy' } });
+      expect(status.serviceName).toBe('Session');
+      expect(status.listenPort).toBe(57020);
+    } finally {
+      await fleet.close();
+    }
+  });
+
   it('reports NOT_FOUND for an unknown Admin target', async () => {
     const admin = createClient(Admin, transport);
     await expect(

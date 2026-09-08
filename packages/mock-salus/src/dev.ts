@@ -11,7 +11,8 @@ const port = Number(process.env.MOCK_PORT ?? MOCK_HUB_PORT);
 const seed = process.env.MOCK_SEED ?? 'salus-mock';
 
 const running = await startMockServer({ port, seed });
-console.log(`mock-salus listening on h2c :${running.port} (seed "${seed}")`);
+console.log(`mock-salus listening on h2c ${running.ports.join(', ')} (seed "${seed}")`);
+console.log(`  a site's portBase should be ${running.port} to reach this instance`);
 console.log(
   `  services: ${running.fleet
     .listServices()

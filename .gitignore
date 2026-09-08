@@ -1,0 +1,35 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# build output
+dist/
+build/
+.svelte-kit/
+*.tsbuildinfo
+
+# test
+test-results/
+coverage/
+
+# bridge runtime state
+apps/bridge/data/
+apps/bridge/certs/
+*.pem
+
+# env / local
+.env
+.env.*
+!.env.example
+.DS_Store
+
+# editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Bridge audit log (durable NDJSON, per-site)
+apps/bridge/audit/
+
+# Bridge-local KV store (named workspaces, saved views)
+apps/bridge/kv/

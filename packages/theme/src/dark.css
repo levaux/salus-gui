@@ -1,0 +1,101 @@
+/**
+ * dark.css — the dark scheme.
+ *
+ * Applied by `[data-theme='dark']`, and by `prefers-color-scheme: dark` only
+ * when no explicit choice has been made. The explicit attribute has to win in
+ * both directions, which is why the media query is guarded on
+ * `:root:not([data-theme])` rather than left to specificity.
+ */
+[data-theme='dark'] {
+  --bg-app: #0e1116;
+  --bg-surface: #161a21;
+  --bg-raised: #1c222b;
+  --bg-sunken: #0a0d11;
+  --bg-hover: #222933;
+  --bg-selected: #1e3a5f;
+
+  --fg-default: #e6e9ee;
+  --fg-muted: #9aa4b2;
+  --fg-subtle: #6b7684;
+  --fg-inverse: #0e1116;
+
+  --border-default: #2a313b;
+  --border-strong: #3d4653;
+  --border-subtle: #1e242c;
+
+  --accent: #4d8bf5;
+  --accent-hover: #6aa0f7;
+  --accent-fg: #06101f;
+  --accent-subtle: #16294a;
+
+  --focus-ring: #4d8bf5;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 40%);
+  --shadow-md: 0 4px 14px rgb(0 0 0 / 50%);
+
+  /* Severity and status lift slightly: the light-scheme values are too dense
+     against a dark ground to read at 11–12px. */
+  --sev-info: #60a5fa;
+  --sev-warn: #f59e0b;
+  --sev-alarm: #fb923c;
+  --sev-error: #f87171;
+  --sev-fatal: #fb7185;
+  --sev-test: #a78bfa;
+
+  --status-running: #4ade80;
+  --status-degraded: #fbbf24;
+  --status-error: #f87171;
+  --status-starting: #22d3ee;
+
+  --verdict-pass: #4ade80;
+  --verdict-fail: #f87171;
+  --verdict-skip: #d4a72c;
+
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --bg-app: #0e1116;
+    --bg-surface: #161a21;
+    --bg-raised: #1c222b;
+    --bg-sunken: #0a0d11;
+    --bg-hover: #222933;
+    --bg-selected: #1e3a5f;
+
+    --fg-default: #e6e9ee;
+    --fg-muted: #9aa4b2;
+    --fg-subtle: #6b7684;
+    --fg-inverse: #0e1116;
+
+    --border-default: #2a313b;
+    --border-strong: #3d4653;
+    --border-subtle: #1e242c;
+
+    --accent: #4d8bf5;
+    --accent-hover: #6aa0f7;
+    --accent-fg: #06101f;
+    --accent-subtle: #16294a;
+
+    --focus-ring: #4d8bf5;
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 40%);
+    --shadow-md: 0 4px 14px rgb(0 0 0 / 50%);
+
+    --sev-info: #60a5fa;
+    --sev-warn: #f59e0b;
+    --sev-alarm: #fb923c;
+    --sev-error: #f87171;
+    --sev-fatal: #fb7185;
+    --sev-test: #a78bfa;
+
+    --status-running: #4ade80;
+    --status-degraded: #fbbf24;
+    --status-error: #f87171;
+    --status-starting: #22d3ee;
+
+    --verdict-pass: #4ade80;
+    --verdict-fail: #f87171;
+    --verdict-skip: #d4a72c;
+
+    color-scheme: dark;
+  }
+}

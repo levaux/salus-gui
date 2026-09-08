@@ -1,0 +1,33 @@
+/**
+ * light.css — the light scheme. Surface, foreground, border and accent only;
+ * everything else lives in tokens.css and holds in both schemes.
+ */
+:root,
+[data-theme='light'] {
+  --bg-app: #f6f7f9;
+  --bg-surface: #ffffff;
+  --bg-raised: #ffffff;
+  --bg-sunken: #eef0f4;
+  --bg-hover: #eceff3;
+  --bg-selected: #e0e9fb;
+
+  --fg-default: #16191d;
+  --fg-muted: #5b6472;
+  --fg-subtle: #8b95a3;
+  --fg-inverse: #ffffff;
+
+  --border-default: #d8dde4;
+  --border-strong: #b9c1cc;
+  --border-subtle: #e7eaef;
+
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-fg: #ffffff;
+  --accent-subtle: #dbe7fe;
+
+  --focus-ring: #2563eb;
+  --shadow-sm: 0 1px 2px rgb(16 25 45 / 8%);
+  --shadow-md: 0 4px 12px rgb(16 25 45 / 12%);
+
+  color-scheme: light;
+}

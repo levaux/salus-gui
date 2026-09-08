@@ -1,0 +1,65 @@
+/**
+ * env-accent.css — the environment band.
+ *
+ * This console drives real devices. The same screen that runs a regression
+ * suite against a local mock can eject a live session or publish a protocol
+ * revision to a deployed fleet, and the *only* thing that distinguishes them is
+ * which backend the bridge is pointed at. So the environment is not a label in
+ * a settings panel: it is a persistent, high-contrast band across the top of
+ * the window and a tinted accent on every primary control.
+ *
+ * Set by `applyTheme({ env })`, which writes `data-env` on <html>. An
+ * unrecognised or absent value falls through to the `prod` treatment
+ * deliberately — an environment the console cannot identify is one it must not
+ * imply is safe.
+ */
+:root {
+  --env-band-h: 3px;
+  --env-name: 'production';
+  --env-band: var(--status-error);
+}
+
+[data-env='dev'] {
+  --env-name: 'development';
+  --env-band: #16a34a;
+  --accent: #2563eb;
+}
+
+[data-env='mock'] {
+  --env-name: 'mock — offline';
+  --env-band: #7c3aed;
+  --accent: #7c3aed;
+}
+
+[data-env='staging'] {
+  --env-name: 'staging';
+  --env-band: #d97706;
+  --accent: #d97706;
+}
+
+[data-env='prod'] {
+  --env-name: 'production';
+  --env-band: #dc2626;
+  --accent: #b91c1c;
+}
+
+/* The band itself. Fixed, non-interactive, and above every panel but below
+   modals and toasts — it must never be the thing an operator dismisses. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: var(--env-band-h);
+  background: var(--env-band);
+  z-index: var(--z-modal);
+  pointer-events: none;
+}
+
+/* The name, for surfaces that want it inline (title bars, the about panel). */
+.env-name::after {
+  content: var(--env-name);
+  font: var(--fw-medium) var(--fs-xs) / var(--lh-tight) var(--font-ui);
+  color: var(--env-band);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}

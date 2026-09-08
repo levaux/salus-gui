@@ -1,0 +1,91 @@
+/**
+ * tokens.css — scheme-agnostic design tokens.
+ *
+ * Everything here holds in both light and dark; only `light.css` / `dark.css`
+ * redefine surface, foreground, border and accent. Keeping the split strict is
+ * what lets a component be written once and stay correct in either scheme.
+ *
+ * The two colour scales are not decorative: they are the Salus closed catalogs
+ * the console has to render faithfully — `Salus.Admin.LogLevel` and
+ * `Salus.Common.ServiceStatus`. A closed catalog gets a token per member so an
+ * unmapped value is a visible gap rather than a silent default.
+ */
+:root {
+  /* --- type ------------------------------------------------------------- */
+  --font-ui:
+    system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji';
+  /* Every number the operator reads is monospace and tabular: a metric that
+     shifts horizontally as digits change is a metric that cannot be scanned
+     down a column. */
+  --font-mono:
+    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 13px;
+  --fs-lg: 15px;
+  --fs-xl: 18px;
+  --lh-tight: 1.25;
+  --lh-normal: 1.5;
+  --fw-normal: 400;
+  --fw-medium: 500;
+  --fw-bold: 600;
+  --num-variant: tabular-nums;
+
+  /* --- space + shape ---------------------------------------------------- */
+  --sp-0: 0;
+  --sp-1: 2px;
+  --sp-2: 4px;
+  --sp-3: 8px;
+  --sp-4: 12px;
+  --sp-5: 16px;
+  --sp-6: 24px;
+  --sp-7: 32px;
+  --radius-sm: 3px;
+  --radius-md: 5px;
+  --radius-lg: 8px;
+  --border-w: 1px;
+
+  /* --- motion ----------------------------------------------------------- */
+  --dur-fast: 90ms;
+  --dur-med: 160ms;
+  --ease: cubic-bezier(0.2, 0, 0.2, 1);
+
+  /* --- z ---------------------------------------------------------------- */
+  --z-panel: 1;
+  --z-dropdown: 100;
+  --z-modal: 200;
+  --z-toast: 300;
+
+  /* --- severity: Salus.Admin.LogLevel ----------------------------------- */
+  /* TRACE DEBUG INFO WARN ALARM ERROR FATAL TEST — all eight, because the log
+     console renders whatever the wire carries and an unmapped level would
+     silently inherit body colour. ALARM sits between WARN and ERROR: it is an
+     operational alert, not a fault. TEST is the harness's own channel. */
+  --sev-trace: #6b7280;
+  --sev-debug: #7c8798;
+  --sev-info: #3b82f6;
+  --sev-warn: #d97706;
+  --sev-alarm: #ea580c;
+  --sev-error: #dc2626;
+  --sev-fatal: #9f1239;
+  --sev-test: #7c3aed;
+
+  /* --- status: Salus.Common.ServiceStatus ------------------------------- */
+  /* UNKNOWN STARTING RUNNING DEGRADED STOPPED ERROR. DEGRADED is deliberately
+     distinct from ERROR — a degraded service is still serving, and colouring
+     the two alike teaches an operator to ignore both. */
+  --status-unknown: #6b7280;
+  --status-starting: #0891b2;
+  --status-running: #16a34a;
+  --status-degraded: #d97706;
+  --status-stopped: #64748b;
+  --status-error: #dc2626;
+
+  /* --- verdict: the harness's three outcomes ---------------------------- */
+  /* PASS / FAIL / SKIP. Skip is its own colour and never green: a suite that
+     stood down is not a suite that passed, and the whole point of the glyph is
+     that the difference survives a glance. */
+  --verdict-pass: #16a34a;
+  --verdict-fail: #dc2626;
+  --verdict-skip: #a16207;
+}

@@ -1,0 +1,16 @@
+{
+  "name": "@salus-gui/theme",
+  "version": "0.1.3",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./tokens.css": "./src/tokens.css",
+    "./light.css": "./src/light.css",
+    "./dark.css": "./src/dark.css",
+    "./env-accent.css": "./src/env-accent.css"
+  },
+  "scripts": {
+    "build": "tsc -b"
+  }
+}

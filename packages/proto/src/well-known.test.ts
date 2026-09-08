@@ -118,9 +118,15 @@ describe('Decimal', () => {
     const anyDec = fc
       .tuple(fc.bigInt({ min: -BOUND, max: BOUND }), fc.integer({ min: 0, max: 12 }))
       .map(([u, s]) => dec(u, s));
+    // Antisymmetry is a claim about the *sign* of the comparison, so compare
+    // signs rather than raw values. Negating a comparison that returned 0
+    // yields -0, and `toBe` is Object.is, under which -0 !== +0 — asserting
+    // the raw values fails on every pair of equal decimals, which is a defect
+    // in the assertion and not in decCompare. `sign` maps ±0 to +0.
+    const sign = (n: number) => (n > 0 ? 1 : n < 0 ? -1 : 0);
     fc.assert(
       fc.property(anyDec, anyDec, (a, b) => {
-        expect(decCompare(a, b)).toBe(-decCompare(b, a));
+        expect(sign(decCompare(a, b))).toBe(sign(-decCompare(b, a)));
       }),
       { numRuns: 500 },
     );

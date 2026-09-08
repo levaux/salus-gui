@@ -14,7 +14,10 @@
    * a heavyweight dependency added before one is a cost the console pays on
    * every load for a capability it is not using.
    */
-  interface Column<R> {
+  // Deliberately not generic: a column descriptor names a field and how to
+  // align it, and carries nothing of the row type. Parameterising it added a
+  // type variable no member used.
+  interface Column {
     key: string;
     header: string;
     /** Right-align and use tabular figures — for anything the eye scans down. */
@@ -23,7 +26,7 @@
   }
 
   interface Props<R> {
-    columns: Column<R>[];
+    columns: Column[];
     rows: R[];
     /** Stable identity per row. Keying by array index makes every update a churn. */
     rowKey: (row: R) => string;
@@ -31,7 +34,7 @@
     empty?: string;
     selected?: string | undefined;
     onselect?: (row: R) => void;
-    children?: import('svelte').Snippet<[R, Column<R>]>;
+    children?: import('svelte').Snippet<[R, Column]>;
   }
 
   const {

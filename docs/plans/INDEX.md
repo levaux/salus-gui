@@ -32,6 +32,7 @@ Work in flight. Every row here is a numbered file at `docs/plans/NNN-<name>.md`.
 
 | Seq | State     | Plan | Started | Completed | Architecture docs updated on completion |
 |-----|-----------|------|---------|-----------|------------------------------------------|
+| 001 | running   | [001-salus-gui-repo.md](001-salus-gui-repo.md) | 2026-09-08 | | The `v0.1.x` scaffold train — workspace + toolchain, proto vendoring pipeline, the five packages, the bridge, the SPA shell + first fleet panel, CI. Releases as `v0.2.0`. Rebased at promotion against the reference console's active branch (codegen out of git, svelte-check gate, Linger contract, client-disconnect classification, mock fidelity). |
 
 ## Parked
 
@@ -57,7 +58,6 @@ Written, not yet promoted. No number and no INDEX state until work starts.
 | Plan | Title |
 |---|---|
 | [harness-control-gui.md](backlog/harness-control-gui.md) | Harness & control GUI — gRPC surfaces, the regression console, and experimentation (`v0.2.x` → released `v0.3.0`) |
-| [salus-gui-repo.md](backlog/salus-gui-repo.md) | salus-gui repo — the workspace scaffold (`v0.1.x` → released `v0.2.0`) |
 
 ## How to update this file
 

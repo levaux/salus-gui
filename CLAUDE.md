@@ -16,7 +16,7 @@
 | `research/` | open questions, not committed to — see [research/README.md](research/README.md) |
 | `tools/` | stdlib-only repo tooling (`plans.py`, `check-plans.py`; the proto sync tool arrives with the scaffold) |
 | `.claude/` | agent settings, hooks and commands |
-| `packages/`, `apps/` | the pnpm workspace — arrives with [salus-gui-repo.md](docs/plans/backlog/salus-gui-repo.md), each package/app carrying its own README |
+| `packages/`, `apps/` | the pnpm workspace — arrives with [salus-gui-repo.md](docs/plans/001-salus-gui-repo.md), each package/app carrying its own README |
 
 ## Architecture (target — see the plans)
 
@@ -69,16 +69,17 @@ Infra: Envoy edge 58000 (admin 58009), Postgres 55432, ClickHouse 59000 native /
 ## Build & Dev (once the scaffold plan lands)
 
 ```bash
-corepack enable && pnpm install
-pnpm gen              # buf codegen into packages/proto/src/gen (required before first typecheck)
+corepack enable && pnpm install   # postinstall runs buf codegen — the tree typechecks after this
+pnpm gen              # regenerate packages/proto/src/gen by hand (it is NOT committed)
 pnpm dev:stack:mock   # mock-salus + bridge + web — fully offline
 pnpm dev:stack        # bridge + web against a running Salus fleet
 pnpm test             # vitest across packages and apps — the single test tier
-pnpm lint && pnpm typecheck && pnpm build
+pnpm lint && pnpm typecheck && pnpm check && pnpm build   # check = svelte-check
 ```
 
 - **Never run dev servers (`pnpm dev*`, `vite`, `tsx watch`) as foreground agent commands** — they don't exit, so a foreground call hangs the turn. Use a background task or a real terminal. A `PreToolUse` hook in [.claude/settings.json](.claude/settings.json) **denies** the foreground form mechanically and allows the backgrounded one.
-- Proto vendoring: `pnpm sync-protos` copies `../salus/src/proto/Salus/*.proto` into `packages/proto/vendor/salus/` and pins the source commit in `packages/proto/salus-commit.lock`; `pnpm sync-protos:check` is the CI drift gate; `buf breaking` against the committed baseline image is the wire-compat gate.
+- Proto vendoring: `pnpm sync-protos` copies `../salus/src/proto/Salus/*.proto` into `packages/proto/vendor/salus/` and pins the source commit in `packages/proto/salus-commit.lock`; `pnpm sync-protos:check` is the CI drift gate; `buf breaking` against the committed baseline image is the wire-compat gate. **Generated output stays out of git, recorded state stays in it**: `src/gen/` is ignored and rebuilt, while `.buf-image-prev.binpb` is tracked — it is the previous proto image, not derivable from the tree, and losing it disarms the breaking gate.
+- **`tsc -b` does not check `.svelte` script blocks** — `pnpm check` (svelte-check) is the gate that does, and it is a distinct CI step. A wrong proto field path inside a component is invisible to typecheck.
 
 ## Testing
 
@@ -147,10 +148,9 @@ The full ritual, step by step, is in [docs/plans/INDEX.md](docs/plans/INDEX.md#h
 
 ### Active Plans
 
-Nothing running yet. The two founding plans sit in the backlog, intended for promotion in this order:
+- [001-salus-gui-repo.md](docs/plans/001-salus-gui-repo.md) — **running** (promoted 2026-09-08). The `v0.1.x` scaffold train: pnpm workspace + toolchain (`v0.1.1`), the proto vendoring pipeline (`v0.1.2` — `sync-protos` + commit lock + buf codegen + breaking gate), `@salus-gui/{theme,streams}` (`v0.1.3`), `mock-salus` (`v0.1.4`), the bridge (`v0.1.5` — `:56400`, Connect⇄gRPC forward, read-only guard, audit, `/kv`), the SPA shell + first live fleet panel (`v0.1.6`). Releases as `v0.2.0`. Rebased at promotion against the reference console's active branch — codegen stays out of git, `svelte-check` is a CI gate, Linger joins the streams contracts, the bridge classifies client disconnects.
 
-- [salus-gui-repo.md](docs/plans/backlog/salus-gui-repo.md) — the `v0.1.x` scaffold train: pnpm workspace + toolchain, the proto vendoring pipeline (`sync-protos` + commit lock + buf codegen + breaking gate), `@salus-gui/{proto,streams,theme,ui-kit,mock-salus}`, the bridge (`:56400` — Connect⇄gRPC forward, read-only guard, audit, `/kv`), the SPA shell with a first live fleet-status panel, and CI. Releases as `v0.2.0`.
-- [harness-control-gui.md](docs/plans/backlog/harness-control-gui.md) — opens when the scaffold train releases. The `v0.2.x` control-surface train: fleet observability (Admin/Network status, seq-resumable logs, lifecycle), infra lifecycle control, the **regression-harness console** (run `test/run_all.py` suites from the GUI, stream and structure their output), the manually-driven **end-to-end platform session** (full fleet + Edge `--application-control`, driven step-by-step from the GUI), then the experimentation surfaces (session ejection, protocol operations, health/therapy observation, device-plane simulation). Releases as `v0.3.0`.
+Queued behind it: [harness-control-gui.md](docs/plans/backlog/harness-control-gui.md) — the `v0.2.x` control-surface train (fleet observability, infra lifecycle control, the **regression-harness console**, the manually-driven **end-to-end platform session**, then the experimentation surfaces). Opens when the scaffold train releases; releases as `v0.3.0`.
 
 ## Permissions & Tooling (agent)
 

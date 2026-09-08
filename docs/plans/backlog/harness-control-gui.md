@@ -53,6 +53,24 @@ scaffold train releases `v0.2.0`; depends on nothing else.
   and the session orchestrator's declared process plan — under a configured `SALUS_REPO` root,
   bound to loopback, with run records (NDJSON) for everything started, and orphan reaping on
   bridge shutdown.
+- **Reconcile, do not trust** — the load-bearing guardrail of this plan, and the one every stage
+  gets wrong by default. Salus operations finish fast (a unit suite in under a second, a
+  `StartRoutine` synchronously, a protocol publish in one call) and the console watches them
+  through a *pair* of surfaces — a list or subscription plus an authority — that can disagree
+  for a window. Four rules, each earned upstream against a real fleet:
+  - **A subscription opened after the thing finished never emits.** Panels must not sit at
+    "running 0%" forever waiting for a frame that cannot come: a **fast-finish watchdog**
+    re-asks the authority at ~1.2 s / 3 s / 8 s and adopts a terminal state when it finds one.
+  - **A list refreshed immediately after a submit catches the pre-terminal row.** Re-list once
+    the terminal result lands, rather than trusting the first read.
+  - **Never fake an unpopulated field.** Where a backend leaves a state field empty, a
+    client-side heuristic that "looks right" is worse than nothing — upstream painted FAILED
+    runs green from a timestamp fallback. Derive a *neutral* label instead and let the real one
+    light up when the backend populates it. This is the same honesty class as `⊘ SKIP` never
+    being folded into green, below.
+  - **Fire-and-forget loads need a supersede guard.** A slow response for run A landing after
+    the operator has pivoted to B renders A's data under B's heading. Responses for a
+    no-longer-selected entity drop on the floor.
 
 ## Staged path
 
@@ -81,7 +99,10 @@ classifier** turning the output grammar into a structured run model (suite open/
 check rows with pass/fail/detail, counts, elapsed, master verdict from exit code) — classifier
 fixtures are **recorded transcripts of real runs**, committed, so grammar drift is a red test,
 not a silent mis-render; run history (NDJSON + rerun-with-same-selection); artifact ingestion
-(`summary.json`/`junit.xml`) where a suite emits them. GUI: suite picker with infra badges,
+(`summary.json`/`junit.xml`) where a suite emits them. The stream-vs-authority pairing here is
+the run's live output vs. its exit code, and a fast suite closes before a late-attaching viewer
+sees a line — so the run model's terminal state comes from the **process exit**, watchdog-polled
+per the reconcile guardrail, never inferred from the output stream falling quiet. GUI: suite picker with infra badges,
 preflight card (probes + one-click `/infra` bring-up of whatever the selection needs), live run
 view, history. **This stage is the first deliverable of the repo's purpose: the full regression
 matrix launched, watched, and dispositioned from the dashboard.**
@@ -95,7 +116,10 @@ preflight (db + envoy via `/infra`) → seed credentials → Session / Authentic
 live log tail. The GUI session panel is **operator-paced**: bring-up, protocol allocate/sync,
 then the `EdgeApplication` loop — `ListDueRoutines` → `StartRoutine` (disposition + step
 outcomes rendered) → `SkipRoutine` → `GetApplicationState` — each a button, with the automated
-elements between (readiness gates, status refresh, log correlation). The `edgeapplication`
+elements between (readiness gates, status refresh, log correlation). `StartRoutine` returns its
+disposition synchronously and its effects land asynchronously (vault rows, outbox, telemetry),
+so the panel re-reads `GetApplicationState` after a terminal disposition rather than trusting
+the counters it painted from the response — the reconcile guardrail applied to the Edge. The `edgeapplication`
 catalog entry's dynamic target binds to the session's Edge port. This is the manual end-to-end
 harness run the console exists to host; a one-click "scripted walk" of the same steps is the
 automation follow-on, not the point.
@@ -116,6 +140,22 @@ subject-scoped) + `GetHealthStats`; Therapy: active-therapy registry (`Subscribe
 the query results. Paired with a running `EdgeSmoke`/`EdgeIntegration`-style session this closes
 the loop: drive the Edge from one panel, watch its telemetry commit in another.
 
+**Expect transient duplicate rows, and dedup keep-last at the store choke-point.** Salus's
+Health and Therapy tables are ClickHouse **`ReplacingMergeTree` keyed by `event_id`**
+(`health_samples`/`health_summaries`, the five `therapy_*` tables) — so between a re-write and
+the background merge, a query without `FINAL` legitimately returns more than one row per key.
+A client that keys rows by that id and assumes uniqueness gets double-counted series and, in
+Svelte, a duplicate-key error that aborts the render flush and freezes the surrounding UI. Dedup
+keep-last where rows enter the store, matching the table's own replace semantics, and use
+positional keys for append-only display feeds whose sequence is backend-owned.
+
+**Establish each query RPC's ordering and limit semantics before building a window fetch.**
+Upstream shipped a four-year discontinuity into one chart by assuming a bare limit returns the
+newest rows when the backend ordered ascending and applied the limit from the *oldest* — the fix
+was to anchor the window on a coverage probe rather than on a bare limit. Read the Salus query
+handlers (or measure them) rather than inferring, and where a series mixes a backfill with a
+live tail, drop an inconsistent older era at an epoch-sized gap rather than rendering both.
+
 ### v0.3.0 — Release
 `v0.3.0 Release — fleet ops, regression console, end-to-end session, experimentation surfaces`.
 `docs/` gains the harness-integration reference (suite catalog, output grammar, orchestrator
@@ -130,6 +170,10 @@ plan format); commit-history v0.2 series prose finalized.
   workbench.
 - The read-only switch, flipped mid-session, refuses the next mutator of *every* kind (RPC,
   infra action, harness run, session step) — one vitest contract per surface.
+- **The reconcile guardrail is verified by the fast path, not the slow one.** Run the quickest
+  always-run suite (`harness`) and a synchronous `StartRoutine` and confirm each reaches its
+  terminal state in the GUI *without* a manual refresh — the watchdog case is invisible on
+  anything slow enough to be comfortable.
 
 ## Risks / gotchas
 

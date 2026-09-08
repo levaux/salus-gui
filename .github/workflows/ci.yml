@@ -4,7 +4,7 @@
 # surface area to make splitting it worthwhile. Split when build time or
 # flakiness isolation actually demands it.
 #
-# Step → gate mapping, as of v0.1.2:
+# Step → gate mapping, as of v0.1.6:
 #   plans-lint          → docs/plans/ register consistency (numbered ⟺ listed
 #                          in INDEX, Status lines, backlog freshness, no
 #                          dangling plan links). Stdlib-only Python, so it runs
@@ -20,17 +20,21 @@
 #                          an intended bump, in the same commit.
 #   lint                → eslint + prettier --check
 #   typecheck           → tsc -b across every project reference
-#   test                → vitest across packages (and apps, from v0.1.5)
+#   check               → svelte-check. NOT redundant with typecheck: tsc
+#                          cannot parse .svelte template syntax at all, so
+#                          component internals are invisible to it. This step
+#                          caught a broken vite plugin import and two type
+#                          errors the moment it was added.
+#   test                → vitest across packages and apps
+#   build               → packages → web → bridge, in dependency order
 #
 # `pnpm install` runs the proto package's postinstall (buf generate), so the
 # generated code exists before anything typechecks. src/gen is NOT committed:
 # it is fully determined by the drift-gated vendored sources plus the pinned
 # buf toolchain, so there is nothing to diff and no regenerate-and-diff gate.
 #
-# Steps later stages add:
-#   v0.1.6  check   (svelte-check — tsc does not read .svelte script blocks;
-#                    it joins CI when apps/web exists)
-#           build   (packages → web → bridge)
+# Every gate the plan called for is now wired; a later stage adds a step only
+# when it brings a surface no existing gate covers.
 
 name: CI
 
@@ -89,5 +93,14 @@ jobs:
       - name: Typecheck (tsc -b)
         run: pnpm typecheck
 
+      - name: Svelte check (component scripts)
+        # tsc does not read .svelte template syntax, so this is the only gate
+        # that sees inside a component — including a wrong proto field path,
+        # which is invisible everywhere else and silently renders nothing.
+        run: pnpm check
+
       - name: Test (vitest)
         run: pnpm test
+
+      - name: Build (packages → web → bridge)
+        run: pnpm build

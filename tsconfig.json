@@ -8,6 +8,7 @@
     { "path": "./packages/proto" },
     { "path": "./packages/theme" },
     { "path": "./packages/streams" },
+    { "path": "./packages/ui-kit" },
     { "path": "./packages/mock-salus" },
     { "path": "./apps/bridge" }
   ]

@@ -11,7 +11,7 @@
 #   ./infra/down.sh --force          # also free the ports if something else holds them
 #
 # Flags:
-#   --only <component>  one of: mock, bridge  (repeatable)
+#   --only <component>  one of: mock, bridge, web  (repeatable)
 #   --force             kill whatever holds the ports, PID file or not
 #   -q, --quiet         suppress progress output (still prints errors)
 #   -h, --help          this text
@@ -40,20 +40,21 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 
-if [[ ${#ONLY[@]} -eq 0 ]]; then ONLY=(bridge mock); fi
+if [[ ${#ONLY[@]} -eq 0 ]]; then ONLY=(web bridge mock); fi
 
 port_of() {
     case "$1" in
         bridge) echo "${BRIDGE_PORT:-$BRIDGE_PORT_DEFAULT}" ;;
         mock)   echo "${MOCK_PORT:-$MOCK_PORT_DEFAULT}" ;;
+        web)    echo "${WEB_PORT:-$WEB_PORT_DEFAULT}" ;;
     esac
 }
 
 stopped_any=0
 for name in "${ONLY[@]}"; do
     case "$name" in
-        mock|bridge) ;;
-        *) err "unknown component '$name' (expected: mock, bridge)"; exit 2 ;;
+        mock|bridge|web) ;;
+        *) err "unknown component '$name' (expected: mock, bridge, web)"; exit 2 ;;
     esac
 
     if stop_component "$name"; then

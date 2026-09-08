@@ -37,7 +37,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$NAME" ]]; then
-    err "which component? (mock, bridge)"
+    err "which component? (mock, bridge, web)"
     err "    ./infra/logs.sh bridge -f"
     exit 2
 fi

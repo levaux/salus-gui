@@ -58,6 +58,15 @@ else
     row "mock" 0 ":$MOCK_PORT — not listening"
 fi
 
+# --- web --------------------------------------------------------------------
+WEB_PORT="${WEB_PORT:-$WEB_PORT_DEFAULT}"
+if port_open "$WEB_PORT"; then
+    pid="$(running_pid web)"
+    row "console" 1 "http://localhost:$WEB_PORT${pid:+ (pid $pid)}"
+else
+    row "console" 0 ":$WEB_PORT — not listening"
+fi
+
 # --- bridge -----------------------------------------------------------------
 if port_open "$BRIDGE_PORT"; then
     pid="$(running_pid bridge)"

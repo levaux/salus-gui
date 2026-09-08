@@ -1,0 +1,35 @@
+/* The theme package is the only source of colour and spacing. */
+@import '@salus-gui/theme/tokens.css';
+@import '@salus-gui/theme/light.css';
+@import '@salus-gui/theme/dark.css';
+@import '@salus-gui/theme/env-accent.css';
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
+  line-height: var(--lh-normal);
+  color: var(--fg-default);
+  background: var(--bg-app);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Every number the operator scans is monospace and tabular. */
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: var(--num-variant);
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}

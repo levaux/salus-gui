@@ -1,0 +1,25 @@
+{
+  "name": "@salus-gui/ui-kit",
+  "version": "0.1.6",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@salus-gui/streams": "workspace:*",
+    "@salus-gui/theme": "workspace:*"
+  },
+  "peerDependencies": {
+    "svelte": "5.56.3"
+  },
+  "devDependencies": {
+    "svelte": "5.56.3",
+    "vitest": "^3.0.2"
+  }
+}

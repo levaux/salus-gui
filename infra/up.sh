@@ -23,8 +23,12 @@
 #   --mock              use the mock fleet (default)
 #   --live              use a real Salus fleet; implies --only bridge
 #   --host <host>       host for --live (default 127.0.0.1)
-#   --only <component>  one of: mock, bridge  (repeatable)
+#   --only <component>  one of: mock, bridge, web  (repeatable)
 #   --read-only         start the bridge with the read-only switch on
+#   --direct            the SPA calls the bridge directly over one h2
+#                       connection instead of through Vite's HTTP/1.1 proxy.
+#                       Needed once a workspace holds more than a few live
+#                       feeds — see infra/README.md.
 #   -q, --quiet         suppress progress output (still prints errors)
 #   -h, --help          this text
 #
@@ -41,6 +45,7 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 MODE=mock
 HOST=127.0.0.1
 READ_ONLY=0
+DIRECT=0
 ONLY=()
 
 while [[ $# -gt 0 ]]; do
@@ -50,6 +55,7 @@ while [[ $# -gt 0 ]]; do
         --host)      HOST="${2:?--host needs a value}"; shift ;;
         --only)      ONLY+=("${2:?--only needs a component}"); shift ;;
         --read-only) READ_ONLY=1 ;;
+        --direct)    DIRECT=1 ;;
         -q|--quiet)  QUIET=1 ;;
         -h|--help)   show_help "${BASH_SOURCE[0]}" ;;
         *) err "unknown option: $1"; err "try: $0 --help"; exit 2 ;;
@@ -58,15 +64,15 @@ while [[ $# -gt 0 ]]; do
 done
 
 # --live means there is no mock to start.
-if [[ $MODE == live && ${#ONLY[@]} -eq 0 ]]; then ONLY=(bridge); fi
-if [[ ${#ONLY[@]} -eq 0 ]]; then ONLY=(mock bridge); fi
+if [[ $MODE == live && ${#ONLY[@]} -eq 0 ]]; then ONLY=(bridge web); fi
+if [[ ${#ONLY[@]} -eq 0 ]]; then ONLY=(mock bridge web); fi
 
 wants() { local c; for c in "${ONLY[@]}"; do [[ "$c" == "$1" ]] && return 0; done; return 1; }
 
 for c in "${ONLY[@]}"; do
     case "$c" in
-        mock|bridge) ;;
-        *) err "unknown component '$c' (expected: mock, bridge)"; exit 2 ;;
+        mock|bridge|web) ;;
+        *) err "unknown component '$c' (expected: mock, bridge, web)"; exit 2 ;;
     esac
 done
 
@@ -123,6 +129,22 @@ if wants bridge; then
 fi
 
 # -----------------------------------------------------------------------------
+# Web (the SPA's dev server)
+# -----------------------------------------------------------------------------
+if wants web; then
+    # Two ways the browser can reach the bridge, and the difference is real.
+    # By default Vite proxies /rpc — simple, but Vite's dev server is HTTP/1.1,
+    # so beyond a handful of live streams the browser's ~6-connections-per-origin
+    # ceiling silently stops opening new ones. --direct points the SPA straight
+    # at the bridge so every stream shares ONE h2 connection.
+    if [[ $DIRECT -eq 1 ]]; then
+        export VITE_RPC_ORIGIN="https://localhost:${BRIDGE_PORT:-$BRIDGE_PORT_DEFAULT}"
+        log "SPA will call the bridge directly (one h2 connection)"
+    fi
+    start_component web "${WEB_PORT:-$WEB_PORT_DEFAULT}" 60 pnpm dev
+fi
+
+# -----------------------------------------------------------------------------
 # Summary
 # -----------------------------------------------------------------------------
 if [[ $QUIET -eq 0 ]]; then
@@ -132,6 +154,9 @@ if [[ $QUIET -eq 0 ]]; then
     else
         ok "Mock fleet ${DIM}h2c :${MOCK_PORT:-$MOCK_PORT_DEFAULT}…${RESET}  (one listener per service)"
         ok "Bridge     ${DIM}https://localhost:${BRIDGE_PORT:-$BRIDGE_PORT_DEFAULT}${RESET}  → mock"
+    fi
+    if wants web; then
+        ok "Console    ${DIM}http://localhost:${WEB_PORT:-$WEB_PORT_DEFAULT}${RESET}  ${BOLD}← open this${RESET}"
     fi
     echo
     log "Check it:    ${BOLD}curl -sk --http2 https://localhost:${BRIDGE_PORT:-$BRIDGE_PORT_DEFAULT}/bridge/info${RESET}"

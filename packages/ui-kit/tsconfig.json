@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "tsBuildInfoFile": "dist/.tsbuildinfo",
+    "lib": ["ES2022", "DOM"]
+  },
+  // Only plain .ts reaches tsc: it cannot parse .svelte template syntax, so
+  // components are checked by svelte-check instead (`pnpm check`), and
+  // src/svelte-shims.d.ts is what lets the .ts files here import them.
+  "include": ["src/**/*.ts", "src/**/*.d.ts"],
+  "exclude": ["src/**/*.test.ts", "dist"],
+  "references": [{ "path": "../streams" }, { "path": "../theme" }]
+}

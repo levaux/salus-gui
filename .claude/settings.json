@@ -62,6 +62,10 @@
           {
             "type": "command",
             "command": "input=$(cat); cmd=$(jq -r '.tool_input.command' <<<\"$input\"); bg=$(jq -r '.tool_input.run_in_background // false' <<<\"$input\"); [ \"$bg\" = \"true\" ] && exit 0; echo \"$cmd\" | grep -Eq '^[[:space:]]*git[[:space:]]+(commit|tag|notes)([[:space:]]|$)' && exit 0; echo \"$cmd\" | grep -Eq '(^|[^[:alnum:]_./-])pnpm([[:space:]]+[^|;&]*)?[[:space:]]dev(:[[:graph:]]*)?([[:space:]]|$)|(^|[^[:alnum:]_./-])vite([[:space:]]*$|[[:space:]]+(dev|preview)([[:space:]]|$))|(^|[^[:alnum:]_./-])tsx[[:space:]]+watch([[:space:]]|$)' || exit 0; printf '%s' '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Dev servers never exit — a foreground pnpm dev*/vite/tsx watch through the Bash tool hangs the turn (CLAUDE.md Build & Dev). Use ./infra/up.sh (which detaches properly), run_in_background, or a real terminal.\"}}'"
+          },
+          {
+            "type": "command",
+            "command": "input=$(cat); cmd=$(jq -r '.tool_input.command' <<<\"$input\"); echo \"$cmd\" | grep -Eq '(^|[^[:alnum:]_./-])git[[:space:]]+([^|;&]*[[:space:]])?commit([[:space:]]|$)' || exit 0; dir=$(jq -r '.cwd // empty' <<<\"$input\"); branch=$(git -C \"${dir:-.}\" rev-parse --abbrev-ref HEAD 2>/dev/null); [ \"$branch\" = \"main\" ] || exit 0; printf '%s' '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"main is released state only (CLAUDE.md Git Workflow). Commit on dev: git checkout dev. main advances only by git merge --ff-only dev at a release tag, and that includes the release commit itself.\"}}'"
           }
         ]
       }
@@ -73,7 +77,7 @@
       "Bash(pnpm *) — the workspace toolchain: install, codegen, lint, typecheck, vitest, builds (foreground dev servers are denied by the PreToolUse hook; backgrounded ones pass)",
       "Bash(node *), Bash(npm *), Bash(npx *), Bash(corepack *) — Node tooling around pnpm",
       "Bash(python3 *) — the stdlib-only plans tooling (tools/plans.py, tools/check-plans.py)",
-      "Bash(git add *), Bash(git commit *), Bash(git rm *), Bash(git mv *), Bash(git tag *) — local repo mutations only; push stays gated in permissions.ask, and commits additionally require Simon's per-instance approval as a working rule",
+      "Bash(git add *), Bash(git commit *), Bash(git rm *), Bash(git mv *), Bash(git tag *) — local repo mutations only; push stays gated in permissions.ask, commits additionally require Simon's per-instance approval as a working rule, and a commit is denied outright while HEAD is on main by the branch-guard PreToolUse hook",
       "Bash(./tools/*), Bash(./scripts/*) — repo helpers (plans register + lint; later the proto sync tool)",
       "Bash(mkdir *), Bash(cp *), Bash(mv *), Bash(touch *), Bash(chmod *) — workspace file plumbing",
       "Bash(kill *) — reaping orphaned dev/test processes found via lsof",

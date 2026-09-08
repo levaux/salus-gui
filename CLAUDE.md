@@ -101,8 +101,9 @@ One tier: `pnpm test` runs vitest across every package and app. `mock-salus` ser
 
 ## Git Workflow
 
-- Main branch: `main`
-- Feature branches: `dev-<feature>` or `feature/<description>` or `fix/<description>`
+- **`main` is released state; `dev` is where work happens.** Every commit lands on `dev` (or a branch off it), and `main` only ever moves by `git merge --ff-only dev` at a release tag. So `main`'s tip is always the newest `vX.Y.0` and never a mid-train commit, which is what makes "what is released?" answerable by looking rather than by reading the ledger. **Never commit while on `main`** — including the release commit itself, which is made on `dev` and fast-forwarded. Gated: a `PreToolUse` hook in [.claude/settings.json](.claude/settings.json) denies `git commit` whenever `HEAD` is on `main`.
+- Feature branches: `dev-<feature>` or `feature/<description>` or `fix/<description>`, branched from `dev` and merged back `--ff-only`. Small work commits straight to `dev`; a branch is for work that would otherwise leave `dev` broken between commits.
+- **The history stays linear.** No merge commits anywhere — `--ff-only` is the only merge used, and `git log --oneline --first-parent main` must read as one continuous version chain. Rebase rather than merge when `dev` falls behind.
 - **Commit subject style.** A commit either _ships versioned product work_ or it doesn't, and the subject says which:
   - **Versioned** (bumps the root `package.json` `"version"` — the single source of truth): `vX.Y.Z Short description` — e.g. `v0.1.3 Bridge Connect forward + read-only guard`.
   - **Non-versioned** (anything that does NOT bump the version — infra, tests, docs, tooling, config): a **`type:` prefix** — one of `docs:` · `proto:` (vendored-proto sync / codegen refresh) · `test:` · `infra:` (CI, bridge deployment) · `chore:` (Claude Code config, settings, dev tooling) · `fix:`. Pick the closest; don't invent new types casually.
@@ -119,9 +120,9 @@ When a development series wraps, keep `main`'s history linear (no merge commits)
 
 1. **Bump version** in the root `package.json` (`x.y.(z+n)` → `x.(y+1).0` for a minor; `(x+1).0.0` for a major).
 2. **Update [docs/commit-history.md](docs/commit-history.md)** so the series' prose captures everything shipped.
-3. **Commit subject**: `vX.Y.0 Release — <comma-separated capability themes>` (one line).
-4. **Fast-forward main**: `git checkout main && git merge --ff-only <dev-branch> && git push origin main`.
-5. **Annotated tag**: `git tag -a vX.Y.0 -m "vX.Y.0 — <themes>" <sha>` then push the tag.
+3. **Commit subject**: `vX.Y.0 Release — <comma-separated capability themes>` (one line). **On `dev`**, like every other commit.
+4. **Fast-forward main**: `git checkout main && git merge --ff-only dev && git push origin main`, then `git checkout dev` — do not leave the working tree on `main`, where the next commit would be refused.
+5. **Annotated tag**: `git tag -a vX.Y.0 -m "vX.Y.0 — <themes>" <sha>` then push the tag and `dev`.
 
 Verification: `git log --oneline --first-parent main` reads as one continuous version chain with no `Merge …` entries.
 
@@ -165,7 +166,7 @@ Next up, unpromoted: [harness-control-gui.md](docs/plans/backlog/harness-control
 
 ## Permissions & Tooling (agent)
 
-[.claude/settings.json](.claude/settings.json) allowlists the commands this workflow needs. **Allowlisted**: `git` (incl. tag/merge), `node`/`corepack`/`pnpm`/`npm`/`npx`, `python3` (the stdlib-only plans tooling), `curl`/`jq`/`rg`/`grep`/`find`, `gh`, file plumbing (`mkdir`/`cp`/`mv`/`touch`/`chmod`), `lsof`/`kill` (reaping orphaned dev processes), and the repo helpers `./scripts/*` + `./tools/*` (`tools/plans.py`, `tools/check-plans.py`). **Gated** (`ask`): `git push`, `git reset --hard`, `git clean`. **Denied**: `rm -rf`, `git push --force`, and foreground dev servers via the `PreToolUse` hook (Build & Dev above). The `autoMode.allow` block documents, entry by entry, why each command family is safe to run unprompted.
+[.claude/settings.json](.claude/settings.json) allowlists the commands this workflow needs. **Allowlisted**: `git` (incl. tag/merge), `node`/`corepack`/`pnpm`/`npm`/`npx`, `python3` (the stdlib-only plans tooling), `curl`/`jq`/`rg`/`grep`/`find`, `gh`, file plumbing (`mkdir`/`cp`/`mv`/`touch`/`chmod`), `lsof`/`kill` (reaping orphaned dev processes), and the repo helpers `./scripts/*` + `./tools/*` (`tools/plans.py`, `tools/check-plans.py`). **Gated** (`ask`): `git push`, `git reset --hard`, `git clean`. **Denied**: `rm -rf`, `git push --force`, and — via the two `PreToolUse` hooks — foreground dev servers (Build & Dev above) and `git commit` while `HEAD` is on `main` (Git Workflow above; `git tag` and `git merge --ff-only` stay allowed there, because the release ritual needs both). The `autoMode.allow` block documents, entry by entry, why each command family is safe to run unprompted.
 
 The `attribution` block is set to empty (`commit: ""`, `pr: ""`) — it enforces the **no `Co-Authored-By`** rule above mechanically.
 
